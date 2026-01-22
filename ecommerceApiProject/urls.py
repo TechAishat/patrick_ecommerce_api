@@ -28,10 +28,8 @@ urlpatterns = [
     path('blog-admin/', blog_admin_site.urls),
     
     # API
-    path('api/', include([
-        path('token/', obtain_auth_token, name='api_token_auth'),
-        path('', include('apiApp.urls')),  # All API routes are now under /api/
-    ])),
+    path('api/', include('apiApp.urls')),  # Directly include apiApp.urls
+    path('api/token/', obtain_auth_token, name='api_token_auth'),  # Move token endpoint
     
     # Auth
     path('accounts/', include('allauth.urls')),
