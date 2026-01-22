@@ -1,0 +1,13 @@
+Django
+djangorestframework
+django-allauth
+django-cors-headers
+gunicorn
+whitenoise
+psycopg2-binary
+python-dotenv
+dj-database-url
+paystack>=1.5.0,<2.0.0 
+Pillow
+cryptography
+django-filter
