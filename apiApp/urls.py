@@ -37,7 +37,8 @@ urlpatterns = [
     path("checkout/", views.create_checkout_session, name="create-checkout"),
     path("webhook/", csrf_exempt(views.paystack_webhook), name="webhook"),
     path("orders/", views.get_orders, name="order-list"),
-    path('api/verify-payment/', views.verify_payment, name='verify_payment'),
+    path('verify-payment/', views.verify_payment, name='verify_payment'),
+
     
     # User Management
     path("users/", include([
