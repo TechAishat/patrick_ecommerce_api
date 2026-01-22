@@ -30,18 +30,25 @@ SECRET_KEY = 'django-insecure-)5(r102v5x6fh_yvtlf2u@pu4oqo(g015i!frf(qbh0(e*rg6t
 DEBUG = True
 
 
-SITE_URL = 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev' if not DEBUG else 'http://localhost:8000'
-ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if not DEBUG else 'http'
+#SITE_URL = 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev' if not DEBUG else 'http://localhost:8000'
+#ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if not DEBUG else 'http'
 
+# Replace these lines in your settings.py
 ALLOWED_HOSTS = [ 
     'localhost',
     '127.0.0.1',
-    "electrochemical-thoughtlessly-bruce.ngrok-free.dev", "127.0.0.1"
+    'aishat.pythonanywhere.com',  # Add this
+    'www.aishat.pythonanywhere.com',  # Add this
 ]
+
 CSRF_TRUSTED_ORIGINS = [
-    "https://electrochemical-thoughtlessly-bruce.ngrok-free.dev",
-    'http://localhost:8000',
+    'https://aishat.pythonanywhere.com',
+    'https://www.aishat.pythonanywhere.com',
 ]
+
+# Update SITE_URL to use your PythonAnywhere domain
+SITE_URL = 'https://aishat.pythonanywhere.com'
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
 
 
 # Application definition
