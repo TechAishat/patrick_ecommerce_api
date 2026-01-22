@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from django.views.decorators.csrf import csrf_exempt
-from .views import get_cart, add_to_cart, create_cart, product_list, product_detail, category_list, category_detail
+from .views import get_cart, add_to_cart, create_cart, product_list, product_detail, category_list, category_detail, verify_payment
 
 # Create a router and register our viewsets with it (if using DRF)
 # router = DefaultRouter()
@@ -37,6 +37,7 @@ urlpatterns = [
     path("checkout/", views.create_checkout_session, name="create-checkout"),
     path("webhook/", csrf_exempt(views.paystack_webhook), name="webhook"),
     path("orders/", views.get_orders, name="order-list"),
+    path('api/verify-payment/', views.verify_payment, name='verify_payment'),
     
     # User Management
     path("users/", include([

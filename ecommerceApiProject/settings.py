@@ -242,5 +242,28 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
-CORS_ALLOW_ALL_ORIGINS = True
+# settings.py
+CORS_ALLOW_ALL_ORIGINS = False  # Disable allowing all origins
+CORS_ALLOW_CREDENTIALS = True   # Allow cookies in cross-origin requests
+
+CORS_ALLOWED_ORIGINS = [
+    "https://aishat.pythonanywhere.com",
+    "https://www.aishat.pythonanywhere.com",
+    # Add your development server if needed:
+    # "http://localhost:3000",  # For React/Vue development
+    # "http://127.0.0.1:8000",  # For Django development server
+]
+
+# Additional security headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 

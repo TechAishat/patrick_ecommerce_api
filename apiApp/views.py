@@ -195,9 +195,9 @@ def create_checkout_session(request):
     'currency': 'NGN',
     'reference': str(uuid.uuid4()),
     'metadata': {'cart_code': cart_code},
-    'callback_url': 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev/api/webhook/',
-    'success_url': 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev/payment/success/',
-    'cancel_url': 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev/payment/failed/',
+    'callback_url': 'https://aishat.pythonanywhere.com/api/webhook/',
+    'success_url': 'https://aishat.pythonanywhere.com/payment/success/',
+    'cancel_url': 'https://aishat.pythonanywhere.com/payment/failed/',
 }
 
     response_data = call_paystack_api('transaction/initialize', payload)
@@ -332,6 +332,67 @@ def fulfill_checkout(session, cart_code):
     except Exception as e:
         logger.error(f"Error fulfilling checkout: {str(e)}", exc_info=True)
         return False
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_payment(request):
+    """Handle Paystack payment verification callback."""
+    reference = request.query_params.get('reference')
+    
+    if not reference:
+        return Response(
+            {"status": "error", "message": "No reference provided"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify the transaction with Paystack
+    verify_url = f"https://api.paystack.co/transaction/verify/{reference}"
+    headers = {
+        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        response = requests.get(verify_url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data['status'] and data['data']['status'] == 'success':
+            # Handle successful payment
+            cart_code = data['data']['metadata'].get('cart_code')
+            if cart_code:
+                fulfill_checkout(data['data'], cart_code)
+            
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Payment verified successfully",
+                    "data": {
+                        "reference": reference,
+                        "amount": data['data']['amount'] / 100,  # Convert from kobo to Naira
+                        "currency": data['data']['currency'],
+                        "paid_at": data['data']['paid_at'],
+                        "status": data['data']['status']
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        return Response(
+            {
+                "status": "failed",
+                "message": data.get('message', 'Payment verification failed'),
+                "data": data.get('data')
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    except requests.RequestException as e:
+        logger.error(f"Error verifying payment: {str(e)}")
+        return Response(
+            {"status": "error", "message": "Failed to verify payment"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # Newly Added 
