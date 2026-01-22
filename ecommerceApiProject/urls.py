@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from blog.admin import blog_admin_site
 from rest_framework.authtoken.views import obtain_auth_token
+from django.views.generic import RedirectView
 
 urlpatterns = [
     # Admin
@@ -37,6 +38,9 @@ urlpatterns = [
     
     # Blog
     path('blog/', include('blog.urls')),
+
+    # Add this line to redirect root URL to your main page
+    path('', RedirectView.as_view(url='/api/', permanent=False)),
 ]
 
 if settings.DEBUG:
