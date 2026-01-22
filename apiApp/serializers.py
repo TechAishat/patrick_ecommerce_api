@@ -140,9 +140,12 @@ class CartItemSerializer(serializers.ModelSerializer):
 class CartSerializer(serializers.ModelSerializer):
     cartitems = CartItemSerializer(read_only=True, many=True)
     cart_total = serializers.SerializerMethodField()
+    user = UserSerializer(read_only=True)  # Add this line to include user details
+    
     class Meta:
         model = Cart 
-        fields = ["id", "cart_code", "cartitems", "cart_total"]
+        fields = ["id", "cart_code", "user", "cartitems", "cart_total", "created_at", "updated_at"]
+        read_only_fields = ["user", "cart_code", "created_at", "updated_at"]  # Ensure these are read-only
 
     def get_cart_total(self, cart):
         items = cart.cartitems.all()
@@ -210,10 +213,11 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
 
 class SimpleCartSerializer(serializers.ModelSerializer):
     num_of_items = serializers.SerializerMethodField()
+    
     class Meta:
         model = Cart 
         fields = ["id", "cart_code", "num_of_items"]
 
     def get_num_of_items(self, cart):
         num_of_items = sum([item.quantity for item in cart.cartitems.all()])
-        return num_of_items
+        return num_of_items  # <-- Added return statement

@@ -54,19 +54,42 @@ def category_detail(request, slug):
     return Response(serializer.data)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_to_cart(request):
-    cart_code = request.data.get("cart_code")
-    product_id = request.data.get("product_id")
-
-    cart, created = Cart.objects.get_or_create(cart_code=cart_code)
-    product = get_object_or_404(Product, id=product_id)
-
-    cartitem, created = CartItem.objects.get_or_create(product=product, cart=cart)
-    cartitem.quantity = 1 
-    cartitem.save() 
-
-    serializer = CartSerializer(cart)
-    return Response(serializer.data)
+    try:
+        product_id = request.data.get('product_id')
+        quantity = int(request.data.get('quantity', 1))
+        
+        cart, created = Cart.objects.get_or_create(
+            user=request.user,
+            defaults={'user': request.user}
+        )
+        
+        product = Product.objects.get(id=product_id)
+        
+        cart_item, created = CartItem.objects.get_or_create(
+            cart=cart,
+            product=product,
+            defaults={'quantity': quantity}
+        )
+        
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        
+        serializer = CartSerializer(cart)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Product.DoesNotExist:
+        return Response(
+            {"detail": "Product not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {"detail": "Failed to add item to cart: {}".format(str(e))},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['PUT'])
 def update_cartitem_quantity(request):
@@ -443,11 +466,43 @@ def product_in_wishlist(request):
     return Response({"product_in_wishlist": False})
 
 @api_view(['GET'])
-def get_cart(request, cart_code):
-    cart = get_object_or_404(Cart, cart_code=cart_code)
+@permission_classes([IsAuthenticated])
+def get_cart(request, cart_code=None):
+    try:
+        # Get the most recent cart for the user
+        cart = Cart.objects.filter(user=request.user).order_by('-created_at').first()
+        
+        if not cart:
+            return Response(
+                {"detail": "No cart found. Create one first."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = CartSerializer(cart)
+        return Response(serializer.data)
     
-    serializer = CartSerializer(cart)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error in get_cart: {str(e)}")  # Debugging
+        return Response(
+            {"detail": "An error occurred while fetching the cart."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_cart(request):
+    try:
+        print("Creating cart for user: {}".format(request.user))  # Debugging
+        cart = Cart.objects.create(user=request.user)
+        print("Cart created: {}".format(cart))  # Debugging
+        serializer = CartSerializer(cart)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        print("Error in create_cart: {}".format(str(e)))  # Debugging
+        return Response(
+            {"detail": "Failed to create cart: {}".format(str(e))},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def get_cart_stat(request):

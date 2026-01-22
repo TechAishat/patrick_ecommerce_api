@@ -79,12 +79,19 @@ class Product(models.Model):
 import uuid
 
 class Cart(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="carts",
+        null=True,  # Allow NULL in the database
+        blank=True  # Allow blank in forms
+    )
     cart_code = models.CharField(max_length=11, unique=True, default=uuid.uuid4().hex[:11])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.cart_code
+        return "Cart {} - {}".format(self.cart_code, self.user.email if self.user else "No User")
 
 
 class CartItem(models.Model):

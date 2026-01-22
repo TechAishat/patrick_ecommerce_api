@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from django.views.decorators.csrf import csrf_exempt
+from .views import get_cart, add_to_cart, create_cart, product_list, product_detail, category_list, category_detail
 
 # Create a router and register our viewsets with it (if using DRF)
 # router = DefaultRouter()
@@ -9,21 +10,22 @@ from django.views.decorators.csrf import csrf_exempt
 
 urlpatterns = [
     # Products
-    path("products/", views.product_list, name="product-list"),
-    path("products/<slug:slug>/", views.product_detail, name="product-detail"),
-     
+    path("products/", product_list, name="product-list"),
+    path("products/<slug:slug>/", product_detail, name="product-detail"),
+    
     # Categories
-    path("categories/", views.category_list, name="category-list"),
-    path("categories/<slug:slug>/", views.category_detail, name="category-detail"),
+    path("categories/", category_list, name="category-list"),
+    path("categories/<slug:slug>/", category_detail, name="category-detail"),
     
     # Cart
     path("cart/", include([
-        path("", views.get_cart, name="cart-detail"),
-        path("add/", views.add_to_cart, name="add-to-cart"),
-        path("items/<int:pk>/update/", views.update_cartitem_quantity, name="update-cart-item"),
-        path("items/<int:pk>/delete/", views.delete_cartitem, name="delete-cart-item"),
+        path("", get_cart, name="cart-detail"),  # GET /api/cart/
+        path("create/", create_cart, name="create-cart"),  # POST /api/cart/create/
+        path("add/", add_to_cart, name="add-to-cart"),  # POST /api/cart/add/
+        path("<str:cart_code>/", get_cart, name="cart-detail-code"),  # GET /api/cart/{cart_code}/
     ])),
     
+
     # Reviews
     path("reviews/", include([
         path("add/", views.add_review, name="add-review"),

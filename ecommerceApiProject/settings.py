@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'apiApp',
     'rest_framework',
+    'rest_framework.authtoken',
     'django.contrib.sites',
     'allauth',
     'allauth.account',
@@ -80,14 +81,15 @@ MIDDLEWARE = [
 
 ]
 
+# In your settings.py, ensure you have these configurations:
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-    ],
+    ]
 }
 
 ROOT_URLCONF = 'ecommerceApiProject.urls' 
@@ -152,15 +154,19 @@ AUTHENTICATION_BACKENDS = (
 
 
 # Allauth configuration
-ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_SIGNUP_FIELDS = ['email', 'password1', 'password2']
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'  # Change to 'mandatory' in production
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_ON_GET = True
-
+# Remove or comment out these deprecated settings:
+# ACCOUNT_LOGIN_METHODS = {'email'}
+# ACCOUNT_USERNAME_REQUIRED = False
+# ACCOUNT_EMAIL_REQUIRED = True  # Keep only if needed for backward compatibility
 # Use our custom form
 ACCOUNT_FORMS = {
     'signup': 'apiApp.forms.CustomSignupForm',
@@ -189,7 +195,11 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # Add this line
+
+# Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -212,16 +222,18 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 # Social Account Settings
 
 # In settings.py
-SITE_URL = 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev' if not DEBUG else 'http://localhost:8000'
+#SITE_URL = 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev' if not DEBUG else 'http://localhost:8000'
 # Add to your existing settings
-ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if not DEBUG else 'http'
-CSRF_TRUSTED_ORIGINS = [
-    'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev',
-    'http://localhost:8000',
-]
+#ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if not DEBUG else 'http'
+#CSRF_TRUSTED_ORIGINS = [
+#    'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev',
+#   'http://localhost:8000',
+#]
 
 # Update login URLs
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+
+CORS_ALLOW_ALL_ORIGINS = True
 
