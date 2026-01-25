@@ -1,12 +1,13 @@
+# Add this at the very top of settings.py
+import pymysql
+pymysql.version_info = (2, 2, 1, "final", 0)
+pymysql.install_as_MySQLdb()
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-try:
-    import pymysql
-    pymysql.install_as_MySQLdb()
-except ImportError:
-    pass 
+# Rest of your settings...
 
 load_dotenv()
 
