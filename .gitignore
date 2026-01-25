@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 *.sqlite3
+*$py.class
 *.py[co]
 .DS_Store
 Thumbs.db
