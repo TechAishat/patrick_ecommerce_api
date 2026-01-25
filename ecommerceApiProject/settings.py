@@ -58,7 +58,7 @@ else:
         'ENGINE': 'django.db.backends.mysql',  # This is correct
         'NAME': 'aishat$default',
         'USER': 'aishat',
-        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'PASSWORD': 'Subedetu122#',
         'HOST': 'aishat.mysql.pythonanywhere-services.com',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
