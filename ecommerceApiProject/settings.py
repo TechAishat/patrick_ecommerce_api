@@ -1,9 +1,12 @@
-import pymysql
-pymysql.install_as_MySQLdb()
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+try:
+    import pymysql
+    pymysql.install_as_MySQLdb()
+except ImportError:
+    pass 
 
 load_dotenv()
 
@@ -50,17 +53,18 @@ else:
     
     # Database
     DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': 'aishat$default',
-            'USER': 'aishat',
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': 'aishat.mysql.pythonanywhere-services.com',
-            'OPTIONS': {
-                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            },
-        }
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',  # This is correct
+        'NAME': 'aishat$default',
+        'USER': 'aishat',
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': 'aishat.mysql.pythonanywhere-services.com',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+        },
     }
+}
     
     # Security settings for production
     CSRF_TRUSTED_ORIGINS = [
