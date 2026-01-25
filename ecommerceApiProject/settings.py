@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-)5(r102v5x6fh_yvtlf2u@pu4oqo(g015i!frf(qbh0(e*rg6t'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 
 #SITE_URL = 'https://electrochemical-thoughtlessly-bruce.ngrok-free.dev' if not DEBUG else 'http://localhost:8000'
@@ -45,6 +45,8 @@ CSRF_TRUSTED_ORIGINS = [
     'https://aishat.pythonanywhere.com',
     'https://www.aishat.pythonanywhere.com',
 ]
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Update SITE_URL to use your PythonAnywhere domain
 SITE_URL = 'https://aishat.pythonanywhere.com'
@@ -187,6 +189,17 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+# Email settings (using console backend for testing)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For testing
+# For production, use:
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = 'your-email@gmail.com'
+# EMAIL_HOST_PASSWORD = 'your-app-password'
+DEFAULT_FROM_EMAIL = 'noreply@aishat.pythonanywhere.com'
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -244,15 +257,17 @@ LOGOUT_REDIRECT_URL = '/'
 
 # settings.py
 CORS_ALLOW_ALL_ORIGINS = False  # Disable allowing all origins
-CORS_ALLOW_CREDENTIALS = True   # Allow cookies in cross-origin requests
 
-CORS_ALLOWED_ORIGINS = [
-    "https://aishat.pythonanywhere.com",
-    "https://www.aishat.pythonanywhere.com",
-    # Add your development server if needed:
-    # "http://localhost:3000",  # For React/Vue development
-    # "http://127.0.0.1:8000",  # For Django development server
-]
+# Security settings
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
 # Additional security headers
 CORS_ALLOW_HEADERS = [
