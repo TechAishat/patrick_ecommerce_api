@@ -56,10 +56,10 @@ else:
     DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'Aishat$default',  # Note the capital 'A'
-        'USER': 'Aishat',          # Note the capital 'A'
-        'PASSWORD': 'Subedetu122#',
-        'HOST': 'Aishat.mysql.pythonanywhere-services.com',  # Note the capital 'A'
+        'NAME': os.getenv('DB_NAME'),  # Will use 'Aishat$default' from .env
+        'USER': os.getenv('DB_USER'),  # Will use 'Aishat' from .env
+        'PASSWORD': os.getenv('DB_PASSWORD'),  # Will use 'Subedetu122#' from .env
+        'HOST': os.getenv('DB_HOST'),  # Will use 'Aishat.mysql.pythonanywhere-services.com' from .env
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
@@ -205,14 +205,17 @@ SOCIALACCOUNT_PROVIDERS = {
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {
             'access_type': 'online',
+            'prompt': 'select_account',
         },
         'APP': {
             'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
             'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET'),
             'key': ''
-}
+        }
     }
 }
+
+
 
 # Paystack settings
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
