@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import pymysql
+
+pymysql.install_as_MySQLdb()
 
 load_dotenv()
 
@@ -167,7 +170,6 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Allauth configuration
-# Allauth settings
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_USERNAME_REQUIRED = False
@@ -177,14 +179,12 @@ LOGIN_REDIRECT_URL = '/api/'
 LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_ON_GET = True
 
-
 # Social Account Settings
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_STORE_TOKENS = True
 SOCIALACCOUNT_LOGIN_ON_GET = True
-
 
 # Social Account Providers
 SOCIALACCOUNT_PROVIDERS = {
