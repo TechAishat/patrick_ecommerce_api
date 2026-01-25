@@ -55,11 +55,11 @@ else:
     # Database
     DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',  # This is correct
-        'NAME': 'aishat$default',
-        'USER': 'aishat',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'Aishat$default',  # Note the capital 'A'
+        'USER': 'Aishat',          # Note the capital 'A'
         'PASSWORD': 'Subedetu122#',
-        'HOST': 'aishat.mysql.pythonanywhere-services.com',
+        'HOST': 'Aishat.mysql.pythonanywhere-services.com',  # Note the capital 'A'
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
