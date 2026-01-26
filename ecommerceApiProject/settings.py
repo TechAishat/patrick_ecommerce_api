@@ -1,11 +1,11 @@
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
+# Add these at the very top
 import pymysql
 pymysql.install_as_MySQLdb()
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 load_dotenv()
 
 # Build paths
