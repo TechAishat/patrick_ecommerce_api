@@ -3,7 +3,6 @@
 import pymysql
 pymysql.version_info = (2, 1, 1, "final", 0)
 pymysql.install_as_MySQLdb()
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -51,19 +50,13 @@ else:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
     
     # Database
+    # In settings.py, temporarily use SQLite for testing
     DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'Aishat$default',  # Ensure this is correct
-        'USER': 'Aishat',
-        'PASSWORD': 'Cavanni122#',
-        'HOST': 'Aishat.mysql.pythonanywhere-services.com',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        },
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
     }
-}
     
     # Security settings for production
     CSRF_TRUSTED_ORIGINS = [
