@@ -56,10 +56,10 @@ else:
     DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'Aishat$default'),
-        'USER': os.getenv('DB_USER', 'Aishat'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'your-db-password'),
-        'HOST': os.getenv('DB_HOST', 'Aishat.mysql.pythonanywhere-services.com'),
+        'NAME': 'Aishat$default',  # Your database name
+        'USER': 'Aishat',          # Your database username
+        'PASSWORD': 'Subedetu122#',  # Your database password
+        'HOST': 'Aishat.mysql.pythonanywhere-services.com',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
