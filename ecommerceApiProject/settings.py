@@ -1,10 +1,14 @@
 
 # Add these at the very top
+
 import pymysql
 pymysql.version_info = (2, 1, 1, "final", 0)
 pymysql.install_as_MySQLdb()
 import os
 from pathlib import Path
+import logging
+logger = logging.getLogger(__name__)
+logger.info("Google OAuth Client ID set: %s", bool(os.getenv('GOOGLE_OAUTH_CLIENT_ID')))
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -16,57 +20,6 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-')  # Use environme
 
 # Environment detection
 IS_PYTHONANYWHERE = 'PYTHONANYWHERE_DOMAIN' in os.environ
-
-# Local development settings
-if not IS_PYTHONANYWHERE:
-    DEBUG = True
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-    SITE_URL = 'http://127.0.0.1:8000'
-    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
-    
-    # Database
-    DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
-    
-    # Security settings for development
-    CSRF_TRUSTED_ORIGINS = [
-        'http://localhost:8000',
-        'http://127.0.0.1:8000',
-    ]
-    
-    # Media files
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# PythonAnywhere production settings
-else:
-    DEBUG = False
-    ALLOWED_HOSTS = ['aishat.pythonanywhere.com', 'www.aishat.pythonanywhere.com']
-    SITE_URL = 'https://aishat.pythonanywhere.com'
-    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
-    
-    # Database
-    # In settings.py, temporarily use SQLite for testing
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-        }
-    }
-    
-    # Security settings for production
-    CSRF_TRUSTED_ORIGINS = [
-        'https://aishat.pythonanywhere.com',
-        'https://www.aishat.pythonanywhere.com',
-    ]
-    
-    # Media files
-    MEDIA_URL = 'https://aishat.pythonanywhere.com/media/'
-    MEDIA_ROOT = '/home/aishat/patrick_ecommerce_api/media'
 
 # Application definition
 INSTALLED_APPS = [
@@ -104,6 +57,85 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
 ]
+
+# Local development settings
+if not IS_PYTHONANYWHERE:
+    DEBUG = True
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+    SITE_URL = 'http://127.0.0.1:8000'
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
+    
+    # Database
+    DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',  # Use pathlib for better path handling
+    }
+}
+
+ # Debug toolbar settings
+    INTERNAL_IPS = ['127.0.0.1']
+    
+    # Security settings for development
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ]
+    
+    # Media files
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# Debug logging
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+                'propagate': True,
+            },
+            'allauth': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            },
+        },
+    }
+
+# PythonAnywhere production settings
+else:
+    DEBUG = False
+    ALLOWED_HOSTS = ['aishat.pythonanywhere.com', 'www.aishat.pythonanywhere.com']
+    SITE_URL = 'https://aishat.pythonanywhere.com'
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
+    
+    # Database
+    # In settings.py, temporarily use SQLite for testing
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
+    }
+    
+    # Security settings for production
+    CSRF_TRUSTED_ORIGINS = [
+        'https://aishat.pythonanywhere.com',
+        'https://www.aishat.pythonanywhere.com',
+    ]
+    
+    # Media files
+    MEDIA_URL = 'https://aishat.pythonanywhere.com/media/'
+    MEDIA_ROOT = '/home/aishat/patrick_ecommerce_api/media'
+
+
 
 ROOT_URLCONF = 'ecommerceApiProject.urls'
 
@@ -155,6 +187,28 @@ STATICFILES_DIRS = []  # Empty list since we're using STATIC_ROOT
 # Media files (user uploads)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Debug logging
+LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+                'propagate': True,
+            },
+            'allauth': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            },
+        },
+    }
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
