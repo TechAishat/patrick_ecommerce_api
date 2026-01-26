@@ -53,7 +53,7 @@ else:
     DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'Aishat$default',  # Ensure this matches exactly
+        'NAME': 'Aishat$default',  # Ensure this is correct
         'USER': 'Aishat',
         'PASSWORD': 'Cavanni122#',
         'HOST': 'Aishat.mysql.pythonanywhere-services.com',
