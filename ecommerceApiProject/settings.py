@@ -66,10 +66,6 @@ else:
         },
     }
 }
-
-    print("DB_HOST:", os.environ.get('DB_HOST'))
-    print("GOOGLE_OAUTH_CLIENT_ID:", os.environ.get('GOOGLE_OAUTH_CLIENT_ID'))
-
     
     # Security settings for production
     CSRF_TRUSTED_ORIGINS = [
