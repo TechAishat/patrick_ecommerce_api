@@ -188,28 +188,6 @@ STATICFILES_DIRS = []  # Empty list since we're using STATIC_ROOT
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# Debug logging
-LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-            },
-        },
-        'loggers': {
-            'django': {
-                'handlers': ['console'],
-                'level': 'DEBUG',
-                'propagate': True,
-            },
-            'allauth': {
-                'handlers': ['console'],
-                'level': 'DEBUG',
-            },
-        },
-    }
-
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -220,7 +198,9 @@ AUTH_USER_MODEL = 'apiApp.CustomUser'
 SITE_ID = 1
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
+
     'allauth.account.auth_backends.AuthenticationBackend',
+
 ]
 
 # Allauth configuration
