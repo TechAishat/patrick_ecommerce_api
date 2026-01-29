@@ -1,15 +1,12 @@
-
-# Add these at the very top
-
 import pymysql
 pymysql.version_info = (2, 1, 1, "final", 0)
 pymysql.install_as_MySQLdb()
 import os
 from pathlib import Path
 import logging
-logger = logging.getLogger(__name__)
-logger.info("Google OAuth Client ID set: %s", bool(os.getenv('GOOGLE_OAUTH_CLIENT_ID')))
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
 
 # Build paths
@@ -64,16 +61,17 @@ if not IS_PYTHONANYWHERE:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     SITE_URL = 'http://127.0.0.1:8000'
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
+    SITE_ID = 2  # Local development site ID
     
     # Database
     DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',  # Use pathlib for better path handling
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
- # Debug toolbar settings
+    # Debug toolbar settings
     INTERNAL_IPS = ['127.0.0.1']
     
     # Security settings for development
@@ -86,8 +84,7 @@ if not IS_PYTHONANYWHERE:
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-
-# Debug logging
+    # Debug logging
     LOGGING = {
         'version': 1,
         'disable_existing_loggers': False,
@@ -115,9 +112,9 @@ else:
     ALLOWED_HOSTS = ['aishat.pythonanywhere.com', 'www.aishat.pythonanywhere.com']
     SITE_URL = 'https://aishat.pythonanywhere.com'
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
+    SITE_ID = 1  # Production site ID
     
     # Database
-    # In settings.py, temporarily use SQLite for testing
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -134,8 +131,6 @@ else:
     # Media files
     MEDIA_URL = 'https://aishat.pythonanywhere.com/media/'
     MEDIA_ROOT = '/home/aishat/patrick_ecommerce_api/media'
-
-
 
 ROOT_URLCONF = 'ecommerceApiProject.urls'
 
@@ -181,12 +176,8 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # For collectstatic to copy files
-STATICFILES_DIRS = []  # Empty list since we're using STATIC_ROOT
-
-# Media files (user uploads)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = []
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -195,12 +186,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'apiApp.CustomUser'
 
 # Allauth settings
-SITE_ID = 1
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
-
     'allauth.account.auth_backends.AuthenticationBackend',
-
 ]
 
 # Allauth configuration
@@ -228,22 +216,18 @@ SOCIALACCOUNT_LOGIN_ON_GET = True
 # Social Account Providers
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
-        'SCOPE': [
-            'profile',
-            'email',
-        ],
+        'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {
             'access_type': 'online',
+            'prompt': 'select_account',
         },
         'APP': {
-            'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', ''),
-            'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', ''),
+            'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', 'YOUR_ACTUAL_GOOGLE_CLIENT_ID') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_CLIENT_ID',
+            'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', 'YOUR_ACTUAL_GOOGLE_SECRET') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_SECRET',
             'key': ''
         }
     }
 }
-
-
 
 # Paystack settings
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
@@ -266,10 +250,12 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Security settings (applied in both environments but can be overridden)
+# Security settings
 SECURE_SSL_REDIRECT = IS_PYTHONANYWHERE
 SESSION_COOKIE_SECURE = IS_PYTHONANYWHERE
 CSRF_COOKIE_SECURE = IS_PYTHONANYWHERE
+CSRF_COOKIE_SAMESITE = 'Lax' if not IS_PYTHONANYWHERE else 'None'
+SESSION_COOKIE_SAMESITE = 'Lax' if not IS_PYTHONANYWHERE else 'None'
 SECURE_HSTS_SECONDS = 31536000 if IS_PYTHONANYWHERE else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = IS_PYTHONANYWHERE
 SECURE_HSTS_PRELOAD = IS_PYTHONANYWHERE
