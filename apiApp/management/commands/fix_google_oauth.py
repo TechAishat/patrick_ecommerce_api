@@ -30,8 +30,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS('Successfully reset Google OAuth app'))
             self.stdout.write(f"Client ID: {app.client_id}")
             self.stdout.write(f"Site: {site.domain}")
-            return True
+            
+            # Return None instead of True
+            return None
             
         except Exception as e:
             self.stderr.write(self.style.ERROR(f'Error: {str(e)}'))
-            return False
+            # Return None instead of False
+            return None
