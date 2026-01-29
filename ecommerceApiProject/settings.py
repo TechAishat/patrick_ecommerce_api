@@ -1,6 +1,6 @@
-import pymysql
-pymysql.version_info = (2, 1, 1, "final", 0)
-pymysql.install_as_MySQLdb()
+#import pymysql
+#pymysql.version_info = (2, 1, 1, "final", 0)
+#pymysql.install_as_MySQLdb()
 import os
 from pathlib import Path
 import logging
@@ -192,18 +192,15 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Allauth configuration
-ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_LOGIN_METHODS = ['email']  # Only allow email login
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']  # Required field
 ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 LOGIN_REDIRECT_URL = '/api/'
 LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_ON_GET = True
-# Replace the deprecated settings with:
-ACCOUNT_LOGIN_METHODS = ['email']
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+
 
 ACCOUNT_FORMS = {
     'signup': 'apiApp.forms.CustomSignupForm',
