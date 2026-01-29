@@ -201,6 +201,9 @@ LOGIN_REDIRECT_URL = '/api/'
 LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_ON_GET = True
+# Replace the deprecated settings with:
+ACCOUNT_LOGIN_METHODS = ['email']
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 
 ACCOUNT_FORMS = {
     'signup': 'apiApp.forms.CustomSignupForm',
