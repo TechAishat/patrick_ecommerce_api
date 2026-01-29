@@ -587,17 +587,18 @@ def product_in_cart(request):
     return Response({'product_in_cart': product_exists_in_cart})
 
      
-from rest_framework import status
 @api_view(['GET'])
 def home(request):
     if request.user.is_authenticated:
+        # Use full_name in the welcome message
+        display_name = request.user.full_name or request.user.email
         return Response({
-            'message': f'Welcome, {request.user.email}!',
+            'message': f'Welcome, {display_name}!',
             'is_authenticated': True,
             'user': {
                 'email': request.user.email,
-                'first_name': getattr(request.user, 'first_name', ''),
-                'last_name': getattr(request.user, 'last_name', ''),
+                'full_name': request.user.full_name or '',
+                'user_type': request.user.user_type,
             }
         }, status=status.HTTP_200_OK)
     return Response({

@@ -27,16 +27,16 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
-
+ 
     class Meta:
         model = User
-        fields = ["id", "email", "username", "first_name", "last_name", "profile_picture_url", "password"]
+        fields = ["id", "email", "full_name", "profile_picture_url", "password"]  # Remove username, first_name, last_name
     
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise ValidationError("This email is already in use.")
         return value
-
+ 
     def create(self, validated_data):
         user = User(**validated_data)
         user.set_password(validated_data.pop('password'))  # Securely set password

@@ -8,6 +8,7 @@ from django.contrib.auth.models import AbstractUser
 
 
 class CustomUser(AbstractUser):
+    username = None  # CRITICAL: Disable username field
     USER_TYPE_CHOICES = (
         ('customer', 'Customer'),
         ('blog_editor', 'Blog Editor'),
@@ -17,6 +18,9 @@ class CustomUser(AbstractUser):
     full_name = models.CharField(max_length=255, blank=True, null=True)
     profile_picture_url = models.URLField(blank=True, null=True)
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
+    
+    USERNAME_FIELD = 'email'  # Use email for authentication
+    REQUIRED_FIELDS = []  # No additional fields required for superuser
     
     # Add this property for backward compatibility with your existing code
     @property
@@ -124,7 +128,7 @@ class Review(models.Model):
 
 
     def __str__(self):
-        return f"{self.user.username}'s review on {self.product.name}"
+        return f"{self.user.email}'s review on {self.product.name}"
     
     class Meta:
         unique_together = ["user", "product"]
@@ -152,7 +156,7 @@ class Wishlist(models.Model):
         unique_together = ["user", "product"]
 
     def __str__(self):
-        return f"{self.user.username} - {self.product.name}"
+        return f"{self.user.email} - {self.product.name}"
     
 
 
