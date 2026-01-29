@@ -61,7 +61,7 @@ if not IS_PYTHONANYWHERE:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
     SITE_URL = 'http://127.0.0.1:8000'
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
-    SITE_ID = 2  # Local development site ID
+    SITE_ID = 1  # Local development site ID
     
     # Database
     DATABASES = {
