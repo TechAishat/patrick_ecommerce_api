@@ -9,3 +9,7 @@ venv/
 *.py[co]
 .DS_Store
 Thumbs.db
+"data*.json" 
+"*.json" 
+"data*.json" 
+"*.json" 
