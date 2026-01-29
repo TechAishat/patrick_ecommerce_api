@@ -221,11 +221,11 @@ SOCIALACCOUNT_PROVIDERS = {
             'access_type': 'online',
             'prompt': 'select_account',
         },
-        'APP': {
-            'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', 'YOUR_ACTUAL_GOOGLE_CLIENT_ID') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_CLIENT_ID',
-            'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', 'YOUR_ACTUAL_GOOGLE_SECRET') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_SECRET',
-            'key': ''
-        }
+       # 'APP': {
+        #    'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', 'YOUR_ACTUAL_GOOGLE_CLIENT_ID') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_CLIENT_ID',
+         #   'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', 'YOUR_ACTUAL_GOOGLE_SECRET') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_SECRET',
+          #  'key': ''
+        #}
     }
 }
 
