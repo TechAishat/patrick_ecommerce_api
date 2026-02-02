@@ -7,12 +7,14 @@ from django.contrib.auth.models import BaseUserManager
 
 # Create your models here.
 
+from django.contrib.auth.models import BaseUserManager
+
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError('The Email field must be set')
         if password is None:
-            raise ValueError('The Password field must be set')  # Enforce password
+            raise ValueError('The Password field must be set')  
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -48,6 +50,7 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.full_name or self.email
+
     
     # Add this property for backward compatibility with your existing code
     @property
