@@ -1,29 +1,26 @@
-ecommerceEnv
-.env
-*.pyc
-__pycache__/
+# Virtual Environment
 .venv/
 venv/
-*.sqlite3
+
+# Python Bytecode
+*.pyc
+__pycache__/
 *$py.class
 *.py[co]
+
+# Database Files
+*.sqlite3
+
+# System Files
 .DS_Store
 Thumbs.db
-"data*.json" 
-"*.json" 
-"data*.json" 
-"*.json" 
-"data*.json" 
-"*.json" 
-"data*.json" 
-"*.json" 
-".env" 
-"data*.json" 
-"*.json" 
-".env" 
-"*.json" 
-"data.json" 
-"datadump.json" 
-"*.json" 
-"data.json" 
-"datadump.json" 
+
+# Environment Variables
+.env
+
+# JSON Data Files (Ignore all JSON files if that's the intention)
+data*.json
+*.json
+
+# You can specify additional data files if necessary
+# Or comment lines that you don't need
