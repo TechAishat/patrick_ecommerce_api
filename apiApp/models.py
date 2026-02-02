@@ -2,36 +2,31 @@ from django import forms
 from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
-from django.contrib.auth.models import AbstractUser
-from django.contrib.auth.models import BaseUserManager
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 
 # Create your models here.
 
-from django.contrib.auth.models import BaseUserManager
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError('The Email field must be set')
-        if password is None:
-            raise ValueError('The Password field must be set')  
+            raise ValueError('The Email must be set')
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
-        user.save(using=self._db)
+        user.save()
         return user
-
+ 
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-
+ 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
-
+        
         return self.create_user(email, password, **extra_fields)
-
 
 class CustomUser(AbstractUser):
     username = None  # CRITICAL: Disable username field
@@ -44,13 +39,11 @@ class CustomUser(AbstractUser):
     full_name = models.CharField(max_length=255, blank=True, null=True)
     profile_picture_url = models.URLField(blank=True, null=True)
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
-
+    
+    objects = CustomUserManager()  # Add this line
+    
     USERNAME_FIELD = 'email'  # Use email for authentication
     REQUIRED_FIELDS = []  # No additional fields required for superuser
-
-    def __str__(self):
-        return self.full_name or self.email
-
     
     # Add this property for backward compatibility with your existing code
     @property
@@ -212,83 +205,15 @@ class OrderItem(models.Model):
         return f"Order {self.product.name} - {self.order.paystack_checkout_id}"
     
 
-# In apiApp/models.py - update CustomerAddress model
-# In apiApp/models.py - update CustomerAddress model
+
+# Newly Added 
+
 class CustomerAddress(models.Model):
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    full_name = models.CharField(max_length=255, blank=True, null=True)
-    phone = models.CharField(max_length=20, blank=True, null=True)  # Make nullable
-    alt_phone = models.CharField(max_length=20, blank=True, null=True)
-    street = models.CharField(max_length=255, blank=True, null=True)  # Make nullable
-    landmark = models.CharField(max_length=255, blank=True, null=True)
-    country = models.CharField(max_length=100, blank=True, null=True)
-    city = models.CharField(max_length=100, blank=True, null=True)  # Make nullable
-    state = models.CharField(max_length=100, blank=True, null=True)  # Make nullable
-    is_default = models.BooleanField(default=False)
+    street = models.CharField(max_length=50, blank=True, null=True)
+    state = models.CharField(max_length=50, blank=True, null=True)
+    city = models.CharField(max_length=50, blank=True, null=True)
+    phone = models.CharField(max_length=13, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.customer.email} - {self.full_name or 'No Name'} - {self.city or 'No City'}"
-
-
-# Notification Models
-class Notification(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    title = models.CharField(max_length=255)
-    message = models.TextField()
-    is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    # For email notifications
-    email_sent = models.BooleanField(default=False)
-    email_sent_at = models.DateTimeField(null=True, blank=True)
-    
-    def __str__(self):
-        return f"{self.user.email} - {self.title}"
-
-class EmailNotificationPreference(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    product_updates = models.BooleanField(default=True)
-    order_status = models.BooleanField(default=True)
-    promotions = models.BooleanField(default=False)
-    new_arrivals = models.BooleanField(default=True)
-    
-    def __str__(self):
-        return f"{self.user.email} - Preferences"
-
-# Contact Message Model
-class ContactMessage(models.Model):
-    name = models.CharField(max_length=255)
-    email = models.EmailField()
-    subject = models.CharField(max_length=255)
-    message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_read = models.BooleanField(default=False)
-    
-    def __str__(self):
-        return f"{self.name} - {self.subject}"
-
-# Help Center Models
-class HelpCenterArticle(models.Model):
-    CATEGORY_CHOICES = [
-        ('general', 'General'),
-        ('orders', 'Orders'),
-        ('payments', 'Payments'),
-        ('shipping', 'Shipping'),
-        ('account', 'Account'),
-    ]
-    
-    title = models.CharField(max_length=255)
-    slug = models.SlugField(unique=True)
-    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
-    content = models.TextField()
-    faq = models.BooleanField(default=False)
-    order = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    published = models.BooleanField(default=True)
-    
-    class Meta:
-        ordering = ['order', 'title']
-    
-    def __str__(self):
-        return self.title
+        return f"{self.customer.email} - {self.street} - {self.city}"

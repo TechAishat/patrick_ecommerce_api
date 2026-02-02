@@ -41,7 +41,6 @@ urlpatterns = [
     
     # User Management
     path("users/", include([
-        path("register/", views.register, name="register"),
         path("create/", views.create_user, name="create-user"),
         path("check/<str:email>/", views.existing_user, name="check-user"),
         path("address/", include([
@@ -54,27 +53,7 @@ urlpatterns = [
             path("add/", views.add_to_wishlist, name="add-to-wishlist"),
         ])),
     ])),
-
-    # notifications
-    path("notifications/", include([
-        path("", views.get_notifications, name="get-notifications"),
-        path("preferences/", views.update_notification_preferences, name="update-preferences"),
-        path("<int:notification_id>/read/", views.mark_notification_read, name="mark-notification-read"),
-        path("test/", views.test_notification, name="test-notification"),
-    ])),
     
-     # Contact & Tracking
-    path("contact/", views.contact_us, name="contact-us"),
-    path("track-order/", views.track_order, name="track-order"),
-    path("admin/messages/", views.get_contact_messages, name="get-contact-messages"),
-    
-    # Help Center
-    path("help/", include([
-        path("articles/", views.get_help_articles, name="help-articles"),
-        path("article/<slug:slug>/", views.get_help_article, name="help-article"),
-        path("search/", views.search_help, name="search-help"),
-    ])),
-
     # Search
     path("search/", views.product_search, name="search"),
 
@@ -87,7 +66,6 @@ urlpatterns = [
     path("password-reset/", views.password_reset_request, name="password-reset-request"),
     path("password-reset-confirm/<uidb64>/<token>/", views.reset_password, name="password-reset-confirm"),
 ]
-
 
 
 # from django.urls import path
