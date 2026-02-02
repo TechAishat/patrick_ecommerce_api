@@ -17,7 +17,7 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255, blank=True, null=True)
     profile_picture_url = models.URLField(blank=True, null=True)
-    role = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
+    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
     
     USERNAME_FIELD = 'email'  # Use email for authentication
     REQUIRED_FIELDS = []  # No additional fields required for superuser
@@ -25,11 +25,11 @@ class CustomUser(AbstractUser):
     # Add this property for backward compatibility with your existing code
     @property
     def is_blog_editor(self):
-        return self.role == 'blog_editor' or self.is_staff
+        return self.user_type == 'blog_editor' or self.is_staff
 
     def __str__(self):
         return self.full_name or self.email
-      
+    
 
 class Category(models.Model):
     name = models.CharField(max_length=100)

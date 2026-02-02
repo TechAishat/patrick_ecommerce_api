@@ -202,28 +202,17 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         addresses_data = validated_data.pop('addresses', [])
         terms = validated_data.pop('terms', False)
-        # Get role from initial_data since it's not in validated_data
-        frontend_role = self.initial_data.get('role', 'customer')
-        if frontend_role == 'user':
-            role = 'customer'
-        elif frontend_role == 'admin':
-            role = 'admin'
-        else:
-            role = 'customer'
+        role = validated_data.pop('role', 'customer')
         
-        # Get name from initial_data since it's not in validated_data
-        name = self.initial_data.get('name', '') or validated_data.get('full_name', '')
+        name = validated_data.get('name', '') or validated_data.get('full_name', '')
 
         user = User.objects.create(
             email=validated_data['email'],
+            password=validated_data['password'],
             full_name=name,
             profile_picture_url=validated_data.get('profile_picture_url', ''),
-            role=role  # This will be 'customer' by default
-        )
-        
-        # Set password separately
-        user.set_password(validated_data['password'])
-        user.save()
+            user_type=role  # This will be 'customer' by default
+    )
         
         # Create addresses
         for address_data in addresses_data:

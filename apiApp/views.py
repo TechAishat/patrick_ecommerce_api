@@ -631,6 +631,14 @@ def register(request):
         data['profile_picture_url'] = data.pop('profilePic')
     if 'address' in data:
         data['addresses'] = data.pop('address')  # Map address to addresses
+    if 'role' in data:
+        # Map frontend role to backend user_type
+        if data['role'] == 'user':
+            data['user_type'] = 'customer'
+        elif data['role'] == 'admin':
+            data['user_type'] = 'admin'
+        else:
+            data['user_type'] = 'customer'
     
     serializer = UserRegistrationSerializer(data=data)
     if serializer.is_valid():
@@ -648,7 +656,8 @@ def register(request):
                 'email': user.email,
                 'fullName': user.full_name,
                 'profilePictureUrl': user.profile_picture_url,
-                'role': user.role  # Only return role, no userType
+                'userType': user.user_type,
+                'role': user.user_type  # Include role for frontend compatibility
             }
         }, status=status.HTTP_201_CREATED)
     
