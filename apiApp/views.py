@@ -13,7 +13,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist
-from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer
+from .serializers import (CartItemSerializer, CartSerializer, CategoryDetailSerializer, 
+                         CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, 
+                         ProductListSerializer, ProductDetailSerializer, ReviewSerializer, 
+                         SimpleCartSerializer, UserSerializer, WishlistSerializer,
+                         UserRegistrationSerializer, CustomerAddressRegistrationSerializer)
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -590,18 +594,110 @@ def product_in_cart(request):
 @api_view(['GET'])
 def home(request):
     if request.user.is_authenticated:
-        # Use full_name in the welcome message
         display_name = request.user.full_name or request.user.email
         return Response({
             'message': f'Welcome, {display_name}!',
-            'is_authenticated': True,
+            'isAuthenticated': True,  # camelCase
             'user': {
                 'email': request.user.email,
-                'full_name': request.user.full_name or '',
-                'user_type': request.user.user_type,
+                'fullName': request.user.full_name or '',  # camelCase
+                'userType': request.user.user_type,  # camelCase
             }
         }, status=status.HTTP_200_OK)
     return Response({
         'message': 'Welcome! Please log in.',
-        'is_authenticated': False
+        'isAuthenticated': False  # camelCase
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    # Map frontend field names to backend field names
+    data = request.data.copy()
+    if 'comfirmPassword' in data:
+        data['confirm_password'] = data.pop('comfirmPassword')
+    if 'profilePic' in data:
+        data['profile_picture_url'] = data.pop('profilePic')
+    
+    serializer = UserRegistrationSerializer(data=data)
+    if serializer.is_valid():
+        user = serializer.save()
+        
+        # Generate auth token for the user
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        return Response({
+            'message': 'User registered successfully',
+            'token': token.key,
+            'isAuthenticated': True,  # camelCase
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'fullName': user.full_name,  # camelCase
+                'profilePictureUrl': user.profile_picture_url,  # camelCase
+                'userType': user.user_type  # camelCase
+            }
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Notifications views
+from .services import NotificationService
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_notification_preferences(request):
+    preferences, created = EmailNotificationPreference.objects.get_or_create(
+        user=request.user
+    )
+    
+    serializer = EmailNotificationPreferenceSerializer(
+        preferences, data=request.data, partial=True
+    )
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_notifications(request):
+    notifications = Notification.objects.filter(
+        user=request.user
+    ).order_by('-created_at')
+    
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, notification_id):
+    try:
+        notification = Notification.objects.get(
+            id=notification_id, user=request.user
+        )
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'marked as read'})
+    except Notification.DoesNotExist:
+        return Response(
+            {'error': 'Notification not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def test_notification(request):
+    # Test endpoint to send a notification
+    NotificationService.send_notification(
+        user=request.user,
+        title="Test Notification",
+        message="This is a test notification from your store!",
+        notification_type='product_updates'
+    )
+    return Response({'status': 'test notification sent'})

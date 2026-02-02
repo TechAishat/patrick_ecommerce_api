@@ -182,15 +182,45 @@ class OrderItem(models.Model):
         return f"Order {self.product.name} - {self.order.paystack_checkout_id}"
     
 
-
-# Newly Added 
-
+# In apiApp/models.py - update CustomerAddress model
+# In apiApp/models.py - update CustomerAddress model
 class CustomerAddress(models.Model):
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    street = models.CharField(max_length=50, blank=True, null=True)
-    state = models.CharField(max_length=50, blank=True, null=True)
-    city = models.CharField(max_length=50, blank=True, null=True)
-    phone = models.CharField(max_length=13, blank=True, null=True)
+    full_name = models.CharField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)  # Make nullable
+    alt_phone = models.CharField(max_length=20, blank=True, null=True)
+    street = models.CharField(max_length=255, blank=True, null=True)  # Make nullable
+    landmark = models.CharField(max_length=255, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)  # Make nullable
+    state = models.CharField(max_length=100, blank=True, null=True)  # Make nullable
+    is_default = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.customer.email} - {self.street} - {self.city}"
+        return f"{self.customer.email} - {self.full_name or 'No Name'} - {self.city or 'No City'}"
+
+
+# Notification Models
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # For email notifications
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.user.email} - {self.title}"
+
+class EmailNotificationPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    product_updates = models.BooleanField(default=True)
+    order_status = models.BooleanField(default=True)
+    promotions = models.BooleanField(default=False)
+    new_arrivals = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.user.email} - Preferences"

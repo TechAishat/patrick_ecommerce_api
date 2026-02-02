@@ -41,6 +41,7 @@ urlpatterns = [
     
     # User Management
     path("users/", include([
+        path("register/", views.register, name="register"),
         path("create/", views.create_user, name="create-user"),
         path("check/<str:email>/", views.existing_user, name="check-user"),
         path("address/", include([
@@ -52,6 +53,14 @@ urlpatterns = [
             path("check/", views.product_in_wishlist, name="check-wishlist"),
             path("add/", views.add_to_wishlist, name="add-to-wishlist"),
         ])),
+    ])),
+
+    # notifications
+    path("notifications/", include([
+        path("", views.get_notifications, name="get-notifications"),
+        path("preferences/", views.update_notification_preferences, name="update-preferences"),
+        path("<int:notification_id>/read/", views.mark_notification_read, name="mark-notification-read"),
+        path("test/", views.test_notification, name="test-notification"),
     ])),
     
     # Search
