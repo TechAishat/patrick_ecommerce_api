@@ -17,7 +17,7 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255, blank=True, null=True)
     profile_picture_url = models.URLField(blank=True, null=True)
-    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
+    role = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
     
     USERNAME_FIELD = 'email'  # Use email for authentication
     REQUIRED_FIELDS = []  # No additional fields required for superuser
@@ -25,11 +25,11 @@ class CustomUser(AbstractUser):
     # Add this property for backward compatibility with your existing code
     @property
     def is_blog_editor(self):
-        return self.user_type == 'blog_editor' or self.is_staff
+        return self.role == 'blog_editor' or self.is_staff
 
     def __str__(self):
         return self.full_name or self.email
-    
+      
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -224,3 +224,41 @@ class EmailNotificationPreference(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - Preferences"
+
+# Contact Message Model
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    subject = models.CharField(max_length=255)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"{self.name} - {self.subject}"
+
+# Help Center Models
+class HelpCenterArticle(models.Model):
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('orders', 'Orders'),
+        ('payments', 'Payments'),
+        ('shipping', 'Shipping'),
+        ('account', 'Account'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    content = models.TextField()
+    faq = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['order', 'title']
+    
+    def __str__(self):
+        return self.title

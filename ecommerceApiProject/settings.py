@@ -125,8 +125,31 @@ else:
     # Security settings for production
     CSRF_TRUSTED_ORIGINS = [
         'https://aishat.pythonanywhere.com',
-        'https://www.aishat.pythonanywhere.com',
+        'https://www.aishat.pythonanywhere.com',        
     ]
+
+     # Security settings for production
+    CSRF_TRUSTED_ORIGINS = [
+        "https://patrick-cavannii.netlify.app",
+        "https://www.patrick-cavannii.netlify.app",        
+    ]
+
+
+    CORS_ALLOW_ALL_ORIGINS = False  # For development, restrict in production
+    CORS_ALLOW_CREDENTIALS = True
+
+    CORS_ALLOW_HEADERS = [
+        'accept',
+        'accept-encoding',
+        'authorization',
+        'content-type',
+        'dnt',
+        'origin',
+        'user-agent',
+        'x-csrftoken',
+        'x-requested-with',
+    ]
+    
     
     # Media files
     MEDIA_URL = 'https://aishat.pythonanywhere.com/media/'
@@ -239,21 +262,6 @@ PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
 PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development, restrict in production
-CORS_ALLOW_CREDENTIALS = True
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-]
 
 # Security settings
 SECURE_SSL_REDIRECT = IS_PYTHONANYWHERE

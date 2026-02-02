@@ -7,20 +7,29 @@ import logging
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.core.mail import send_mail
+from django.utils.encoding import force_bytes, force_str
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
-from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist
+from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, EmailNotificationPreference, ContactMessage, HelpCenterArticle
 from .serializers import (CartItemSerializer, CartSerializer, CategoryDetailSerializer, 
                          CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, 
                          ProductListSerializer, ProductDetailSerializer, ReviewSerializer, 
                          SimpleCartSerializer, UserSerializer, WishlistSerializer,
-                         UserRegistrationSerializer, CustomerAddressRegistrationSerializer)
+                         UserRegistrationSerializer, CustomerAddressRegistrationSerializer, 
+                         NotificationSerializer, EmailNotificationPreferenceSerializer,
+                         ContactMessageSerializer, HelpCenterArticleSerializer, OrderTrackingSerializer)
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from .services import NotificationService  # ADD THIS BACK
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -201,8 +210,8 @@ def create_checkout_session(request):
     'reference': str(uuid.uuid4()),
     'metadata': {'cart_code': cart_code},
     'callback_url': 'https://aishat.pythonanywhere.com/api/webhook/',
-    'success_url': 'https://aishat.pythonanywhere.com/payment/success/',
-    'cancel_url': 'https://aishat.pythonanywhere.com/payment/failed/',
+    'success_url': 'https://patrick-cavannii.netlify.app/payment/success/',  # Frontend success
+    'cancel_url': 'https://patrick-cavannii.netlify.app/payment/failed/',  # Frontend cancel
 }
 
     response_data = call_paystack_api('transaction/initialize', payload)
@@ -613,31 +622,33 @@ def home(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
-    # Map frontend field names to backend field names
     data = request.data.copy()
+    
+    # Map frontend fields to backend fields
     if 'comfirmPassword' in data:
         data['confirm_password'] = data.pop('comfirmPassword')
     if 'profilePic' in data:
         data['profile_picture_url'] = data.pop('profilePic')
+    if 'address' in data:
+        data['addresses'] = data.pop('address')  # Map address to addresses
     
     serializer = UserRegistrationSerializer(data=data)
     if serializer.is_valid():
         user = serializer.save()
         
-        # Generate auth token for the user
         from rest_framework.authtoken.models import Token
         token, created = Token.objects.get_or_create(user=user)
         
         return Response({
             'message': 'User registered successfully',
             'token': token.key,
-            'isAuthenticated': True,  # camelCase
+            'isAuthenticated': True,
             'user': {
                 'id': user.id,
                 'email': user.email,
-                'fullName': user.full_name,  # camelCase
-                'profilePictureUrl': user.profile_picture_url,  # camelCase
-                'userType': user.user_type  # camelCase
+                'fullName': user.full_name,
+                'profilePictureUrl': user.profile_picture_url,
+                'role': user.role  # Only return role, no userType
             }
         }, status=status.HTTP_201_CREATED)
     
@@ -645,8 +656,6 @@ def register(request):
 
 
 # Notifications views
-from .services import NotificationService
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_notification_preferences(request):
@@ -701,3 +710,106 @@ def test_notification(request):
         notification_type='product_updates'
     )
     return Response({'status': 'test notification sent'})
+
+
+
+# In apiApp/views.py (add at the end)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def contact_us(request):
+    """Handle contact form submissions."""
+    serializer = ContactMessageSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        
+        # Send notification to admin
+        NotificationService.send_notification(
+            user=request.user if request.user.is_authenticated else None,
+            title="New Contact Message",
+            message=f"From {serializer.data['name']}: {serializer.data['subject']}",
+            notification_type='general'
+        )
+        
+        return Response({
+            'message': 'Your message has been sent successfully!'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def track_order(request):
+    """Track order by reference ID."""
+    reference = request.query_params.get('reference')
+    
+    if not reference:
+        return Response({
+            'error': 'Reference number is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        order = Order.objects.get(paystack_checkout_id=reference)
+        serializer = OrderTrackingSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({
+            'error': 'Order not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_help_articles(request):
+    """Get help center articles."""
+    category = request.query_params.get('category')
+    faq = request.query_params.get('faq')
+    
+    articles = HelpCenterArticle.objects.filter(published=True)
+    
+    if category:
+        articles = articles.filter(category=category)
+    if faq:
+        articles = articles.filter(faq=faq.lower() == 'true')
+    
+    serializer = HelpCenterArticleSerializer(articles, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_help_article(request, slug):
+    """Get specific help article."""
+    try:
+        article = HelpCenterArticle.objects.get(slug=slug, published=True)
+        serializer = HelpCenterArticleSerializer(article)
+        return Response(serializer.data)
+    except HelpCenterArticle.DoesNotExist:
+        return Response({'error': 'Article not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_help(request):
+    """Search help articles."""
+    query = request.query_params.get('q')
+    if not query:
+        return Response({'error': 'Search query is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    articles = HelpCenterArticle.objects.filter(
+        published=True
+    ).filter(
+        Q(title__icontains=query) | Q(content__icontains=query)
+    )
+    
+    serializer = HelpCenterArticleSerializer(articles, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_contact_messages(request):
+    """Get all contact messages (admin only)."""
+    if not request.user.is_staff:
+        return Response({
+            'error': 'Permission denied'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    messages = ContactMessage.objects.all().order_by('-created_at')
+    serializer = ContactMessageSerializer(messages, many=True)
+    return Response(serializer.data)

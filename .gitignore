@@ -21,3 +21,6 @@ Thumbs.db
 "data*.json" 
 "*.json" 
 ".env" 
+"*.json" 
+"data.json" 
+"datadump.json" 

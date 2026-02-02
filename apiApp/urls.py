@@ -63,6 +63,18 @@ urlpatterns = [
         path("test/", views.test_notification, name="test-notification"),
     ])),
     
+     # Contact & Tracking
+    path("contact/", views.contact_us, name="contact-us"),
+    path("track-order/", views.track_order, name="track-order"),
+    path("admin/messages/", views.get_contact_messages, name="get-contact-messages"),
+    
+    # Help Center
+    path("help/", include([
+        path("articles/", views.get_help_articles, name="help-articles"),
+        path("article/<slug:slug>/", views.get_help_article, name="help-article"),
+        path("search/", views.search_help, name="search-help"),
+    ])),
+
     # Search
     path("search/", views.product_search, name="search"),
 
@@ -75,6 +87,7 @@ urlpatterns = [
     path("password-reset/", views.password_reset_request, name="password-reset-request"),
     path("password-reset-confirm/<uidb64>/<token>/", views.reset_password, name="password-reset-confirm"),
 ]
+
 
 
 # from django.urls import path

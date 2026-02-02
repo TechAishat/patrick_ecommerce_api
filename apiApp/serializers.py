@@ -1,7 +1,7 @@
 from rest_framework import serializers 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from .models import Cart, CartItem, CustomerAddress, Order, OrderItem, Product, Category, ProductRating, Review, Wishlist, Notification, EmailNotificationPreference
+from .models import Cart, CartItem, CustomerAddress, Order, OrderItem, Product, Category, ProductRating, Review, Wishlist, Notification, EmailNotificationPreference, ContactMessage, HelpCenterArticle
 
 User = get_user_model()
 
@@ -174,65 +174,75 @@ class CustomerAddressRegistrationSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     confirm_password = serializers.CharField(write_only=True)
     addresses = CustomerAddressRegistrationSerializer(many=True, required=False)
+    terms = serializers.BooleanField(required=True)
     
     class Meta:
         model = User
         fields = ['id', 'email', 'password', 'confirm_password', 
-                 'profile_picture_url', 'addresses']
+                 'profile_picture_url', 'addresses', 'terms']
         extra_kwargs = {
             'password': {'write_only': True}
         }
     
     def validate(self, data):
-        # Handle typo in frontend: "comfirmPassword" instead of "confirm_password"
+        # Handle password confirmation (with typo)
         if 'comfirmPassword' in self.initial_data:
             if data['password'] != self.initial_data['comfirmPassword']:
                 raise serializers.ValidationError("Passwords don't match")
         elif 'confirm_password' in data:
             if data['password'] != data['confirm_password']:
                 raise serializers.ValidationError("Passwords don't match")
+        
+        # Validate terms acceptance
+        if not data.get('terms', False):
+            raise serializers.ValidationError("You must accept the terms and conditions")
+        
         return data
-
-
     
     def create(self, validated_data):
-            # Handle both 'address' and 'addresses' from frontend
-            addresses_data = []
-            if 'address' in self.initial_data:
-                addresses_data = self.initial_data['address']
-            elif 'addresses' in self.initial_data:
-                addresses_data = self.initial_data['addresses']
-            
-            # Create user - get name from frontend data
-            name = self.initial_data.get('name', '')  # Get 'name' from frontend
-            profile_pic = self.initial_data.get('profilePic', '')  # Get 'profilePic' from frontend
-            
-            # Create user directly instead of using create_user
-            user = User(
-                email=validated_data['email'],
-                full_name=name,
-                profile_picture_url=profile_pic
-            )
-            user.set_password(validated_data['password'])  # Hash the password
-            user.save()
-            
-            # Create addresses
-            for address_data in addresses_data:
-                CustomerAddress.objects.create(
-                    customer=user,
-                    full_name=address_data.get('fullName', ''),
-                    phone=address_data.get('phone', ''),
-                    alt_phone=address_data.get('altPhone', ''),
-                    street=address_data.get('street', ''),
-                    landmark=address_data.get('landmark', ''),
-                    country=address_data.get('country', ''),
-                    city=address_data.get('city', ''),
-                    state=address_data.get('state', ''),
-                    is_default=address_data.get('isDefault', False)
-                )
-            return user
+        addresses_data = validated_data.pop('addresses', [])
+        terms = validated_data.pop('terms', False)
+        # Get role from initial_data since it's not in validated_data
+        frontend_role = self.initial_data.get('role', 'customer')
+        if frontend_role == 'user':
+            role = 'customer'
+        elif frontend_role == 'admin':
+            role = 'admin'
+        else:
+            role = 'customer'
+        
+        # Get name from initial_data since it's not in validated_data
+        name = self.initial_data.get('name', '') or validated_data.get('full_name', '')
 
-# In apiApp/serializers.py (add at the end)
+        user = User.objects.create(
+            email=validated_data['email'],
+            full_name=name,
+            profile_picture_url=validated_data.get('profile_picture_url', ''),
+            role=role  # This will be 'customer' by default
+        )
+        
+        # Set password separately
+        user.set_password(validated_data['password'])
+        user.save()
+        
+        # Create addresses
+        for address_data in addresses_data:
+            CustomerAddress.objects.create(
+                customer=user,
+                full_name=address_data.get('fullName', ''),
+                phone=address_data.get('phone', ''),
+                #alt_phone=address_data.get('altPhone', ''),
+                #street=address_data.get('street', ''),
+                #landmark=address_data.get('landmark', ''),
+                #country=address_data.get('country', ''),
+                #city=address_data.get('city', ''),
+                #state=address_data.get('state', ''),
+                #is_default=address_data.get('isDefault', False)
+            )
+        
+        return user
+
+# Notification Serializer
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
@@ -243,3 +253,24 @@ class EmailNotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmailNotificationPreference
         fields = ['product_updates', 'order_status', 'promotions', 'new_arrivals']
+
+
+# Contact Serializer
+class ContactMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMessage
+        fields = ['name', 'email', 'subject', 'message']
+
+# Help Center Serializer
+class HelpCenterArticleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HelpCenterArticle
+        fields = ['id', 'title', 'slug', 'category', 'content', 'faq', 'order', 'created_at', 'updated_at']
+
+# Order Tracking Serializer
+class OrderTrackingSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(read_only=True, many=True)
+    
+    class Meta:
+        model = Order
+        fields = ['id', 'paystack_checkout_id', 'amount', 'status', 'created_at', 'items']

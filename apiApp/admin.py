@@ -6,14 +6,14 @@ from django.utils.html import format_html
 # Register your models here.
 
 class CustomUserAdmin(UserAdmin):
-    list_display = ("email", "full_name", "user_type", "is_staff")
-    list_filter = ("user_type", "is_staff", "is_active")
+    list_display = ("email", "full_name", "role", "is_staff")
+    list_filter = ("role", "is_staff", "is_active")
     search_fields = ("email", "full_name")
     
     # Update fieldsets to remove username references
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal info', {'fields': ('full_name', 'profile_picture_url', 'user_type')}),
+        ('Personal info', {'fields': ('full_name', 'profile_picture_url', 'role')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
