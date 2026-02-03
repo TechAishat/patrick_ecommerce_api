@@ -211,6 +211,8 @@ ACCOUNT_FORMS = {
     'signup': 'apiApp.forms.CustomSignupForm',
 }
 
+SOCIALACCOUNT_ADAPTER = 'apiApp.social_adapters.CustomSocialAccountAdapter'
+
 # Social Account Settings 
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED = True
