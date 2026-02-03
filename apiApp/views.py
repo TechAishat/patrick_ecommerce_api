@@ -15,6 +15,7 @@ from django.utils.encoding import force_str
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
@@ -619,7 +620,7 @@ def register(request):
             'email': user.email,
             'full_name': user.full_name,
             'role': user.user_type,        # Add this line for frontend compatibility
-            'address_required': [],
+            'address': [],
             'message': 'User created successfully.'
         }, status=status.HTTP_201_CREATED)
     
@@ -627,9 +628,10 @@ def register(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])  # Disable token authentication
 @permission_classes([AllowAny])
 def login_user(request):
-    """Custom login endpoint that returns token and user info"""
+    """Custom login endpoint that returns only essential user info"""
     email = request.data.get('email')
     password = request.data.get('password')
     
@@ -642,23 +644,14 @@ def login_user(request):
     user = authenticate(request, username=email, password=password)
     
     if user is not None:
-        from rest_framework.authtoken.models import Token
-        token, created = Token.objects.get_or_create(user=user)
         return Response({
-            'token': token.key,
-            'isAuthenticated': True,
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'full_name': user.full_name or '',
-                'user_type': user.user_type,
-                'role': user.user_type
-            }
+            'email': user.email,
+            'full_name': user.full_name or '',
+            'role': user.user_type
         }, status=status.HTTP_200_OK)
     else:
         return Response({
-            'error': 'Invalid credentials',
-            'isAuthenticated': False
+            'error': 'Invalid credentials'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
      
