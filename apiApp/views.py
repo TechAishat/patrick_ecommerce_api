@@ -639,3 +639,193 @@ def home(request):
         'message': 'Welcome! Please log in.',
         'is_authenticated': False
     }, status=status.HTTP_200_OK)
+
+
+# Track Order
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def track_order(request):
+    """Track order by email or order ID"""
+    email = request.query_params.get('email')
+    order_id = request.query_params.get('order_id')
+    
+    if email:
+        orders = Order.objects.filter(customer_email=email).order_by('-created_at')
+    elif order_id:
+        orders = Order.objects.filter(paystack_checkout_id__icontains=order_id)
+    else:
+        return Response(
+            {"error": "Please provide email or order_id parameter"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not orders.exists():
+        return Response(
+            {"error": "No orders found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = OrderSerializer(orders, many=True)
+    return Response(serializer.data)
+
+# Notifications
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def notifications(request):
+    """Get user notifications or create new notification"""
+    if request.method == 'POST':
+        # Create notification (admin only)
+        if request.user.user_type != 'admin':
+            return Response(
+                {"error": "Only admins can create notifications"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = NotificationSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get user notifications
+    notifications = Notification.objects.filter(user=request.user)
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response(serializer.data)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, notification_id):
+    """Mark notification as read"""
+    try:
+        notification = Notification.objects.get(id=notification_id, user=request.user)
+        notification.is_read = True
+        notification.save()
+        return Response({"status": "marked as read"})
+    except Notification.DoesNotExist:
+        return Response(
+            {"error": "Notification not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+# Contact Us
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def contact_us(request):
+    """Submit contact form"""
+    serializer = ContactMessageSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(
+            {"message": "Contact form submitted successfully"}, 
+            status=status.HTTP_201_CREATED
+        )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def contact_messages(request):
+    """Get all contact messages (admin only)"""
+    if request.user.user_type != 'admin':
+        return Response(
+            {"error": "Only admins can view contact messages"}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    messages = ContactMessage.objects.all()
+    serializer = ContactMessageSerializer(messages, many=True)
+    return Response(serializer.data)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def resolve_contact_message(request, message_id):
+    """Mark contact message as resolved (admin only)"""
+    if request.user.user_type != 'admin':
+        return Response(
+            {"error": "Only admins can resolve contact messages"}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        message = ContactMessage.objects.get(id=message_id)
+        message.is_resolved = True
+        message.save()
+        return Response({"status": "marked as resolved"})
+    except ContactMessage.DoesNotExist:
+        return Response(
+            {"error": "Message not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+# Help Center
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def help_center_articles(request):
+    """Get all help center articles"""
+    category = request.query_params.get('category')
+    
+    if category:
+        articles = HelpCenterArticle.objects.filter(
+            category=category, 
+            is_published=True
+        )
+    else:
+        articles = HelpCenterArticle.objects.filter(is_published=True)
+    
+    serializer = HelpCenterArticleSerializer(articles, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def help_center_article_detail(request, slug):
+    """Get specific help center article"""
+    try:
+        article = HelpCenterArticle.objects.get(slug=slug, is_published=True)
+        serializer = HelpCenterArticleSerializer(article)
+        return Response(serializer.data)
+    except HelpCenterArticle.DoesNotExist:
+        return Response(
+            {"error": "Article not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['POST', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_help_center(request, article_id=None):
+    """Manage help center articles (admin only)"""
+    if request.user.user_type != 'admin':
+        return Response(
+            {"error": "Only admins can manage help center articles"}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    if request.method == 'POST':
+        serializer = HelpCenterArticleSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'PUT':
+        try:
+            article = HelpCenterArticle.objects.get(id=article_id)
+            serializer = HelpCenterArticleSerializer(article, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except HelpCenterArticle.DoesNotExist:
+            return Response(
+                {"error": "Article not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    elif request.method == 'DELETE':
+        try:
+            article = HelpCenterArticle.objects.get(id=article_id)
+            article.delete()
+            return Response({"status": "article deleted"})
+        except HelpCenterArticle.DoesNotExist:
+            return Response(
+                {"error": "Article not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

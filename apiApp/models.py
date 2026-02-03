@@ -217,3 +217,59 @@ class CustomerAddress(models.Model):
 
     def __str__(self):
         return f"{self.customer.email} - {self.street} - {self.city}"
+
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.user.email} - {self.title}"
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    subject = models.CharField(max_length=200)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_resolved = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} - {self.subject}"
+
+class HelpCenterArticle(models.Model):
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('orders', 'Orders'),
+        ('payments', 'Payments'),
+        ('shipping', 'Shipping'),
+        ('returns', 'Returns'),
+        ('account', 'Account'),
+    ]
+    
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True, blank=True)
+    content = models.TextField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='general')
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['category', 'title']
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.title} ({self.get_category_display()})"

@@ -54,6 +54,24 @@ urlpatterns = [
             path("add/", views.add_to_wishlist, name="add-to-wishlist"),
         ])),
     ])),
+
+    # Track Order
+    path("track-order/", views.track_order, name="track-order"),
+    
+    # Notifications
+    path("notifications/", views.notifications, name="notifications"),
+    path("notifications/<int:notification_id>/read/", views.mark_notification_read, name="mark-notification-read"),
+    
+    # Contact Us
+    path("contact/", views.contact_us, name="contact-us"),
+    path("contact-messages/", views.contact_messages, name="contact-messages"),
+    path("contact-messages/<int:message_id>/resolve/", views.resolve_contact_message, name="resolve-contact-message"),
+    
+    # Help Center
+    path("help-center/", views.help_center_articles, name="help-center-articles"),
+    path("help-center/<slug:slug>/", views.help_center_article_detail, name="help-center-article-detail"),
+    path("admin/help-center/", views.manage_help_center, name="manage-help-center"),
+    path("admin/help-center/<int:article_id>/", views.manage_help_center, name="manage-help-center-detail"),
     
     # Search
     path("search/", views.product_search, name="search"),

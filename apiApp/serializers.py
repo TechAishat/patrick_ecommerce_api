@@ -1,6 +1,6 @@
 from rest_framework import serializers 
 from django.contrib.auth import get_user_model
-from .models import Cart, CartItem, CustomerAddress, Order, OrderItem, Product, Category, ProductRating, Review, Wishlist
+from .models import Cart, CartItem, CustomerAddress, Order, OrderItem, Product, Category, ProductRating, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
 
 class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
@@ -221,3 +221,22 @@ class SimpleCartSerializer(serializers.ModelSerializer):
     def get_num_of_items(self, cart):
         num_of_items = sum([item.quantity for item in cart.cartitems.all()])
         return num_of_items  # <-- Added return statement
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'title', 'message', 'is_read', 'created_at']
+        read_only_fields = ['user']
+
+class ContactMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMessage
+        fields = ['id', 'name', 'email', 'subject', 'message', 'created_at', 'is_resolved']
+        read_only_fields = ['created_at', 'is_resolved']
+
+class HelpCenterArticleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HelpCenterArticle
+        fields = ['id', 'title', 'slug', 'content', 'category', 'is_published', 'created_at', 'updated_at']
+        read_only_fields = ['slug', 'created_at', 'updated_at']
