@@ -586,6 +586,41 @@ def product_in_cart(request):
 
     return Response({'product_in_cart': product_exists_in_cart})
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    """Simple user registration endpoint"""
+    data = request.data.copy()
+    
+    # Handle the typo in confirmPassword
+    if 'comfirmPassword' in data:
+        data['confirm_password'] = data.pop('comfirmPassword')
+    
+    # Handle role mapping
+    if data.get('role') == 'cutomer':  # Fix typo
+        data['role'] = 'customer'
+    
+    # Create user directly instead of calling create_user
+    user_serializer = UserSerializer(data=data)
+    if user_serializer.is_valid():
+        user = user_serializer.save()
+        
+        # Generate auth token for the user
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        return Response({
+            'token': token.key,
+            'user_id': user.id,
+            'email': user.email,
+            'full_name': user.full_name,
+            'role': user.user_type,        # Add this line for frontend compatibility
+            'next_step': 'complete_address',
+            'message': 'User created successfully. Please complete your address.'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
      
 @api_view(['GET'])
 def home(request):

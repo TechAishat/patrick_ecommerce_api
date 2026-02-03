@@ -41,6 +41,7 @@ urlpatterns = [
     
     # User Management
     path("users/", include([
+        path("register/", views.register, name="register"), 
         path("create/", views.create_user, name="create-user"),
         path("check/<str:email>/", views.existing_user, name="check-user"),
         path("address/", include([
