@@ -256,6 +256,8 @@ else:
         "https://www.patrick-cavannii.netlify.app",
         "https://aishat.pythonanywhere.com",
         "https://www.aishat.pythonanywhere.com",
+        "http://localhost:5173",  # Add this for local development
+        "http://localhost:3000",  # Keep this too
     ]
 
 CORS_ALLOW_CREDENTIALS = True
