@@ -197,9 +197,8 @@ def create_checkout_session(request):
     'reference': str(uuid.uuid4()),
     'metadata': {'cart_code': cart_code},
     'callback_url': 'https://aishat.pythonanywhere.com/api/webhook/',
-    'success_url': 'https://aishat.pythonanywhere.com/payment/success/',
-    'cancel_url': 'https://aishat.pythonanywhere.com/payment/failed/',
-}
+    'success_url': 'https://patrick-cavannii.netlify.app/payment/success/',
+    'cancel_url': 'https://patrick-cavannii.netlify.app/payment/failed/',}
 
     response_data = call_paystack_api('transaction/initialize', payload)
 
@@ -211,7 +210,7 @@ def create_checkout_session(request):
 
 def call_paystack_api(endpoint, payload):
     headers = {
-        'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}',
+        'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}', 
         'Content-Type': 'application/json',
     }
 
@@ -441,7 +440,7 @@ def password_reset_request(request):
     token = default_token_generator.make_token(user)
     uid = urlsafe_base64_encode(force_bytes(user.pk))
 
-    reset_link = f"https://electrochemical-thoughtlessly-bruce.ngrok-free.dev//{uid}/{token}/"
+    reset_link = f"https://patrick-cavannii.netlify.app/reset-password/{uid}/{token}/"
 
     send_mail(
         'Password Reset Request',

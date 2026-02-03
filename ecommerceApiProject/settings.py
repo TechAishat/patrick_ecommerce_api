@@ -239,8 +239,23 @@ PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
 PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY')
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
 
+# Frontend URL
+FRONTEND_URL = "https://patrick-cavannii.netlify.app" if IS_PYTHONANYWHERE else "http://localhost:3000"
+
+
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development, restrict in production
+if not IS_PYTHONANYWHERE:
+    # Development - allow all origins
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    # Production - only allow specific origins
+    CORS_ALLOWED_ORIGINS = [
+        "https://patrick-cavannii.netlify.app",
+        "https://www.patrick-cavannii.netlify.app",
+        "https://aishat.pythonanywhere.com",
+        "https://www.aishat.pythonanywhere.com",
+    ]
+
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
@@ -253,6 +268,14 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+
+# Security settings for production
+CSRF_TRUSTED_ORIGINS = [
+    'https://aishat.pythonanywhere.com',
+    'https://www.aishat.pythonanywhere.com',
+    'https://patrick-cavannii.netlify.app',
+    'https://www.patrick-cavannii.netlify.app',
 ]
 
 # Security settings
