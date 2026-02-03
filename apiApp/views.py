@@ -7,13 +7,18 @@ import logging
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.core.mail import send_mail
+from django.utils.encoding import force_str
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
-from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist
-from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer
+from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
+from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -614,11 +619,47 @@ def register(request):
             'email': user.email,
             'full_name': user.full_name,
             'role': user.user_type,        # Add this line for frontend compatibility
-            'next_step': 'complete_address',
-            'message': 'User created successfully. Please complete your address.'
+            'address_required': [],
+            'message': 'User created successfully.'
         }, status=status.HTTP_201_CREATED)
     
     return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_user(request):
+    """Custom login endpoint that returns token and user info"""
+    email = request.data.get('email')
+    password = request.data.get('password')
+    
+    if not email or not password:
+        return Response({
+            'error': 'Email and password are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    from django.contrib.auth import authenticate
+    user = authenticate(request, username=email, password=password)
+    
+    if user is not None:
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'isAuthenticated': True,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'full_name': user.full_name or '',
+                'user_type': user.user_type,
+                'role': user.user_type
+            }
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response({
+            'error': 'Invalid credentials',
+            'isAuthenticated': False
+        }, status=status.HTTP_401_UNAUTHORIZED)
 
      
 @api_view(['GET'])
