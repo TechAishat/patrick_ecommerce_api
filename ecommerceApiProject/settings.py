@@ -278,6 +278,8 @@ CSRF_TRUSTED_ORIGINS = [
     'https://www.aishat.pythonanywhere.com',
     'https://patrick-cavannii.netlify.app',
     'https://www.patrick-cavannii.netlify.app',
+    'http://localhost:5173',  # Add this for local development
+    'http://localhost:3000',  # Keep this too
 ]
 
 # Security settings
