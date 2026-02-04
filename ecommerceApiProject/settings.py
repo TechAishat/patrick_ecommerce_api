@@ -122,17 +122,16 @@ else:
         }
     }
     
-    # Security settings for production
-    CSRF_TRUSTED_ORIGINS = [
-        'https://aishat.pythonanywhere.com',
-        'https://www.aishat.pythonanywhere.com',
-    ]
+# Security settings for production
+CSRF_TRUSTED_ORIGINS = [
+    'https://aishat.pythonanywhere.com',
+    'https://www.aishat.pythonanywhere.com',
+]
     
-    # Media files
-    MEDIA_URL = 'https://aishat.pythonanywhere.com/media/'
-    MEDIA_ROOT = '/home/aishat/patrick_ecommerce_api/media'
-
-ROOT_URLCONF = 'ecommerceApiProject.urls'
+# Media files configuration
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 TEMPLATES = [
     {
@@ -187,7 +186,7 @@ USE_TZ = True
 # Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = []
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -314,6 +313,9 @@ else:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+ROOT_URLCONF = 'ecommerceApiProject.urls'  # Make sure this matches your project name
+
 
 # Login URLs
 LOGIN_URL = '/accounts/login/'
