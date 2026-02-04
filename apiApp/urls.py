@@ -42,7 +42,9 @@ urlpatterns = [
     # User Management
     path("users/", include([
         path("register/", views.register, name="register"), 
-        path("login/", views.login_user, name="login"),  # Add this line
+        path("login/", views.login_user, name="login"),
+        path("logout/", views.logout_user, name="logout"),  # Add this line
+        path("me/", views.user_profile, name="user-profile"),  # Add this line
         path("create/", views.create_user, name="create-user"),
         path("check/<str:email>/", views.existing_user, name="check-user"),
         path("address/", include([

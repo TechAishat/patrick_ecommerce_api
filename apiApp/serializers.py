@@ -1,18 +1,17 @@
 from rest_framework import serializers 
 from django.contrib.auth import get_user_model
-from .models import Cart, CartItem, CustomerAddress, Order, OrderItem, Product, Category, ProductRating, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
-
-class ProductListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Product
-        fields = ["id", "name", "slug", "image", "price"]
-
-
+from .models import (
+    Cart, CartItem, CustomerAddress, Order, OrderItem, 
+    Product, Category, ProductRating, Review, Wishlist, 
+    Notification, ContactMessage, HelpCenterArticle, ProductImage
+)
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
 
 User = get_user_model()
+
+
 
 class CustomerAddressSerializer(serializers.ModelSerializer):
     class Meta:
@@ -41,9 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         user.set_password(validated_data.pop('password'))  # Securely set password
         user.save()
-        return user
-
-    
+        return user    
 
 class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -57,14 +54,61 @@ class ProductRatingSerializer(serializers.ModelSerializer):
         model = ProductRating 
         fields =[ "id", "average_rating", "total_reviews"]
 
+class ProductListSerializer(serializers.ModelSerializer):
+    discount = serializers.SerializerMethodField()
+    primary_image = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = [
+            "id", "name", "slug", "primary_image", "price", 
+            "old_price", "discount", "is_featured", "is_exclusive",
+            "rating"
+        ]
+    
+    def get_primary_image(self, obj):
+        image = obj.images.filter(is_primary=True).first() or obj.images.first()
+        if image and hasattr(image.image, 'url'):
+            return self.context['request'].build_absolute_uri(image.image.url)
+        return None
+    
+    def get_discount(self, obj):
+        if obj.old_price and obj.old_price > obj.price:
+            discount = ((obj.old_price - obj.price) / obj.old_price) * 100
+            return round(discount)
+        return 0
 
+class CategoryListSerializer(serializers.ModelSerializer):
+    subcategories = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Category
+        fields = ["id", "name", "image", "slug", "is_featured", "subcategories"]
+    
+    def get_subcategories(self, obj):
+        children = obj.get_children()
+        return CategoryListSerializer(children, many=True).data
 
+class CategoryDetailSerializer(serializers.ModelSerializer):
+    products = ProductListSerializer(many=True, read_only=True)
+    subcategories = CategoryListSerializer(many=True, read_only=True, source='get_children')
+    
+    class Meta:
+        model = Category
+        fields = ["id", "name", "image", "products", "subcategories", "description"]
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
-
-    # Newly Added
-
+    categories = CategoryListSerializer(many=True, read_only=True, source='category')
+    category_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Category.objects.all(),
+        write_only=True,
+        source='category'
+    )
+    
+    # Keep all the SerializerMethodField definitions
+    images = serializers.SerializerMethodField()
     reviews = ReviewSerializer(read_only=True, many=True)
     rating = ProductRatingSerializer(read_only=True)
     poor_review = serializers.SerializerMethodField()
@@ -72,55 +116,79 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     good_review = serializers.SerializerMethodField()
     very_good_review = serializers.SerializerMethodField()
     excellent_review = serializers.SerializerMethodField()
-
     similar_products = serializers.SerializerMethodField()
-
+    colors = serializers.SerializerMethodField()
+    sizes = serializers.SerializerMethodField()
+    is_in_stock = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Product
-        fields = ["id", "name", "description", "slug", "image", "price", "reviews", "rating", "similar_products", "poor_review", "fair_review", "good_review",
-                  "very_good_review", "excellent_review"]
+        fields = [
+            "id", "name", "description", "slug", "price", "old_price", "discount",
+            "categories", "category_ids", "images", "reviews", "rating",
+            "poor_review", "fair_review", "good_review", "very_good_review",
+            "excellent_review", "similar_products", "colors", "sizes", "is_in_stock",
+            "gender", "is_featured", "is_exclusive", "created_at", "status"
+        ]
+        read_only_fields = ["slug", "created_at", "categories", "status"]
+
+    def get_images(self, obj):
+        # Return empty list for now, you can implement this later
+        return []
+
+    def get_poor_review(self, obj):
+        return None  # Implement this if needed
+
+    def get_fair_review(self, obj):
+        return None  # Implement this if needed
+
+    def get_good_review(self, obj):
+        return None  # Implement this if needed
+
+    def get_very_good_review(self, obj):
+        return None  # Implement this if needed
+
+    def get_excellent_review(self, obj):
+        return None  # Implement this if needed
+
+    def get_similar_products(self, obj):
+        # Return empty list for now, you can implement this later
+        return []
+
+    def get_colors(self, obj):
+        return getattr(obj, 'colors', [])
+
+    def get_sizes(self, obj):
+        return getattr(obj, 'sizes', [])
+
+    def create(self, validated_data):
+        # Set default values
+        validated_data.setdefault('colors', [])
+        validated_data.setdefault('sizes', [])
+        validated_data.setdefault('status', 'draft')
+        validated_data.setdefault('is_featured', False)
+        validated_data.setdefault('is_exclusive', False)
+        validated_data.setdefault('review_count', 0)
+        validated_data.setdefault('rating_field', 0.0)
+        
+        # Extract categories
+        categories = validated_data.pop('category', [])
+        
+        # Create the product
+        product = Product.objects.create(**validated_data)
+        
+        # Add categories
+        if categories:
+            product.category.set(categories)
+        
+        return product
         
 
-    # Newly Added
-
-    def get_similar_products(self, product):
-        products = Product.objects.filter(category=product.category).exclude(id=product.id)
-        serializer = ProductListSerializer(products, many=True)
-        return serializer.data
-    
-    def get_poor_review(self, product):
-        poor_review_count = product.reviews.filter(rating=1).count()
-        return poor_review_count
-    
-    def get_fair_review(self, product):
-        fair_review_count = product.reviews.filter(rating=2).count()
-        return fair_review_count
-    
-    def get_good_review(self, product):
-        good_review_count = product.reviews.filter(rating=3).count()
-        return good_review_count
-    
-    def get_very_good_review(self, product):
-        very_good_review_count = product.reviews.filter(rating=4).count()
-        return very_good_review_count
-    
-    def get_excellent_review(self, product):
-        excellent_review_count = product.reviews.filter(rating=5).count()
-        return excellent_review_count
-
-
-class CategoryListSerializer(serializers.ModelSerializer):
+class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Category
-        fields = ["id", "name", "image", "slug"]
-
-class CategoryDetailSerializer(serializers.ModelSerializer):
-    products = ProductListSerializer(many=True, read_only=True)
-    class Meta:
-        model = Category
-        fields = ["id", "name", "image", "products"]
-
+        model = ProductImage
+        fields = ['id', 'image', 'is_primary', 'alt_text']
+        read_only_fields = ['product']
 
 
 class CartItemSerializer(serializers.ModelSerializer):
@@ -134,8 +202,6 @@ class CartItemSerializer(serializers.ModelSerializer):
     def get_sub_total(self, cartitem):
         total = cartitem.product.price * cartitem.quantity 
         return total
-
-
 
 class CartSerializer(serializers.ModelSerializer):
     cartitems = CartItemSerializer(read_only=True, many=True)
@@ -164,10 +230,6 @@ class CartStatSerializer(serializers.ModelSerializer):
         total = sum([item.quantity for item in items])
         return total
 
-
-
-
-
 class WishlistSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     product = ProductListSerializer(read_only=True)
@@ -175,9 +237,6 @@ class WishlistSerializer(serializers.ModelSerializer):
         model = Wishlist 
         fields = ["id", "user", "product", "created"]
 
-
-
-# NEW ADDED 
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductListSerializer(read_only=True)

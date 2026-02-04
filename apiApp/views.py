@@ -31,33 +31,129 @@ User = get_user_model()
 @api_view(['GET', 'POST'])
 def product_list(request):
     if request.method == 'POST':
-        serializer = ProductDetailSerializer(data=request.data)
+        print("Request data:", request.data)  # Debug log
+        serializer = ProductDetailSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            product = serializer.save()
+            # Return the serialized product data with a 201 status
+            return Response(
+                ProductDetailSerializer(product, context={'request': request}).data,
+                status=status.HTTP_201_CREATED
+            )
+        print("Serializer errors:", serializer.errors)  # Debug log
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    products = Product.objects.filter(featured=True) 
-    serializer = ProductListSerializer(products, many=True)
-    return Response(serializer.data)
+    # Get query parameters
+    category_slug = request.query_params.get('category')
+    featured = request.query_params.get('featured')
+    is_exclusive = request.query_params.get('exclusive')
+    gender = request.query_params.get('gender')
+    
+    # Start with base queryset
+    products = Product.objects.filter(status='published')
+    
+    # Apply filters
+    if category_slug:
+        category = get_object_or_404(Category, slug=category_slug)
+        products = products.filter(category=category)
+    
+    if featured and featured.lower() == 'true':
+        products = products.filter(is_featured=True)
+        
+    if is_exclusive and is_exclusive.lower() == 'true':
+        products = products.filter(is_exclusive=True)
+        
+    if gender and gender.lower() in dict(Product.GENDER_CHOICES):
+        products = products.filter(gender__iexact=gender.lower())
+    
+    # Order by featured and created date
+    products = products.order_by('-is_featured', '-created_at')
+    
+    # Pagination
+    page = request.query_params.get('page', 1)
+    page_size = request.query_params.get('page_size', 20)
+    paginator = Paginator(products, page_size)
+    
+    try:
+        products_page = paginator.page(page)
+    except PageNotAnInteger:
+        products_page = paginator.page(1)
+    except EmptyPage:
+        products_page = paginator.page(paginator.num_pages)
+    
+    serializer = ProductListSerializer(products_page, many=True, context={'request': request})
+    
+    return Response({
+        'count': paginator.count,
+        'num_pages': paginator.num_pages,
+        'current_page': products_page.number,
+        'results': serializer.data
+    })
 
 @api_view(['GET'])
 def product_detail(request, slug):
-    product = get_object_or_404(Product, slug=slug)
-    serializer = ProductDetailSerializer(product)
+    product = get_object_or_404(
+        Product.objects.select_related('inventory')
+                      .prefetch_related('images', 'reviews'),
+        slug=slug,
+        status='published'
+    )
+    serializer = ProductDetailSerializer(product, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['GET'])
 def category_list(request):
-    categories = Category.objects.all()
-    serializer = CategoryListSerializer(categories, many=True)
+    # Get only parent categories (categories without a parent)
+    categories = Category.objects.filter(parent__isnull=True).order_by('display_order', 'name')
+    serializer = CategoryListSerializer(categories, many=True, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['GET'])
 def category_detail(request, slug):
-    category = get_object_or_404(Category, slug=slug)
-    serializer = CategoryDetailSerializer(category)
-    return Response(serializer.data)
+    category = get_object_or_404(
+        Category.objects.prefetch_related('children', 'products'),
+        slug=slug
+    )
+    
+    # Get all descendant category IDs including the current category
+    def get_descendant_ids(category):
+        ids = [category.id]
+        for child in category.children.all():
+            ids.extend(get_descendant_ids(child))
+        return ids
+    
+    category_ids = get_descendant_ids(category)
+    
+    # Get products from this category and all subcategories
+    products = Product.objects.filter(
+        category__id__in=category_ids,
+        status='published'
+    ).order_by('-is_featured', '-created_at')
+    
+    # Pagination
+    page = request.query_params.get('page', 1)
+    page_size = request.query_params.get('page_size', 20)
+    paginator = Paginator(products, page_size)
+    
+    try:
+        products_page = paginator.page(page)
+    except PageNotAnInteger:
+        products_page = paginator.page(1)
+    except EmptyPage:
+        products_page = paginator.page(paginator.num_pages)
+    
+    category_serializer = CategoryDetailSerializer(category, context={'request': request})
+    product_serializer = ProductListSerializer(products_page, many=True, context={'request': request})
+    
+    return Response({
+        'category': category_serializer.data,
+        'products': {
+            'count': paginator.count,
+            'num_pages': paginator.num_pages,
+            'current_page': products_page.number,
+            'results': product_serializer.data
+        }
+    })
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -65,25 +161,60 @@ def add_to_cart(request):
     try:
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 1))
+        color = request.data.get('color')
+        size = request.data.get('size')
         
+        # Get or create cart for the user
         cart, created = Cart.objects.get_or_create(
             user=request.user,
             defaults={'user': request.user}
         )
         
-        product = Product.objects.get(id=product_id)
+        # Get the product
+        product = get_object_or_404(Product, id=product_id, status='published')
         
+        # Check if product is in stock
+        if not product.is_in_stock:
+            return Response(
+                {"detail": "This product is currently out of stock."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if there's enough stock for the requested quantity
+        variant = None
+        if hasattr(product, 'inventory'):
+            variant = product.inventory.variants.filter(
+                color=color,
+                size=size,
+                quantity__gte=quantity
+            ).first()
+            
+            if not variant:
+                return Response(
+                    {"detail": "Selected variant is not available in the requested quantity."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Create or update cart item
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
+            color=color,
+            size=size,
             defaults={'quantity': quantity}
         )
         
         if not created:
-            cart_item.quantity += quantity
+            new_quantity = cart_item.quantity + quantity
+            if variant and new_quantity > variant.quantity:
+                return Response(
+                    {"detail": "Not enough stock available."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            cart_item.quantity = new_quantity
             cart_item.save()
         
-        serializer = CartSerializer(cart)
+        serializer = CartSerializer(cart, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     except Product.DoesNotExist:
@@ -92,10 +223,12 @@ def add_to_cart(request):
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
+        logger.error(f"Error adding to cart: {str(e)}", exc_info=True)
         return Response(
-            {"detail": "Failed to add item to cart: {}".format(str(e))},
+            {"detail": "Failed to add item to cart. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 @api_view(['PUT'])
 def update_cartitem_quantity(request):
@@ -660,6 +793,53 @@ def login_user(request):
             'isAuthenticated': False
         }, status=status.HTTP_401_UNAUTHORIZED)
 
+ 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_user(request):
+    try:
+        # Get the token from the request
+        token = request.auth
+        if token:
+            # Delete the token
+            token.delete()
+            return Response(
+                {"message": "Successfully logged out."}, 
+                status=status.HTTP_200_OK
+            )
+        return Response(
+            {"error": "No authentication token found."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    user = request.user
+    return Response({
+        'id': user.id,
+        'email': user.email,
+        'full_name': user.full_name,
+        'role': user.user_type,
+        'is_active': user.is_active,
+        'date_joined': user.date_joined,
+        #'address': user.address,
+        #'phone_number': user.phone_number
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_user(request, email):
+    """Check if a user with the given email exists."""
+    User = get_user_model()
+    exists = User.objects.filter(email=email).exists()
+    return Response({'exists': exists}, status=status.HTTP_200_OK)
      
 @api_view(['GET'])
 def home(request):

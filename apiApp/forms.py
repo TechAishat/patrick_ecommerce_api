@@ -25,5 +25,6 @@ class CustomSignupForm(SignupForm):
         # Save the user with the full name
         user = super().save(request)
         user.full_name = self.cleaned_data['full_name']
+
         user.save()
         return user

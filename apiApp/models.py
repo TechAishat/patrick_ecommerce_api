@@ -57,49 +57,150 @@ class CustomUser(AbstractUser):
 class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True, blank=True)
+    parent = models.ForeignKey(
+        'self', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name='children'
+    )
     image = models.FileField(upload_to="category_img", blank=True, null=True)
+    is_featured = models.BooleanField(default=False)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['display_order', 'name']
 
     def __str__(self):
         return self.name
 
     def save(self, *args, **kwargs):
-
         if not self.slug:
             self.slug = slugify(self.name)
             unique_slug = self.slug
             counter = 1
-            if Product.objects.filter(slug=unique_slug).exists():
+            while Category.objects.filter(slug=unique_slug).exclude(pk=self.pk).exists():
                 unique_slug = f'{self.slug}-{counter}'
                 counter += 1
             self.slug = unique_slug
-        
         super().save(*args, **kwargs)
+
+    @property
+    def is_parent(self):
+        return self.parent is None
+
+    @property
+    def children(self):
+        return self.get_children()
+
+    def get_children(self):
+        return self.children.all().order_by('display_order', 'name')
   
 
 class Product(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField()
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    slug = models.SlugField(unique=True, blank=True)
-    image = models.ImageField(upload_to='products/', blank=True, null=True)
+    GENDER_CHOICES = [
+        ('men', 'Men'),
+        ('women', 'Women'),
+        ('unisex', 'Unisex'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
 
-    featured = models.BooleanField(default=False)
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, related_name="products",  blank=True, null=True)
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True, blank=True)
+    sku_base = models.CharField(max_length=50, blank=True, null=True)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    old_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True
+    )
+    discount = models.PositiveIntegerField(default=0)
+    category = models.ManyToManyField(
+        Category, 
+        related_name='products',
+        blank=True
+    )
+    gender = models.CharField(
+        max_length=10, 
+        choices=GENDER_CHOICES, 
+        default='unisex'
+    )
+    colors = models.JSONField(default=list, blank=True)  # Storing as JSON array
+    sizes = models.JSONField(default=list, blank=True)   # Storing as JSON array
+    rating_field = models.FloatField(default=0.0)  # Renamed from 'rating'
+    review_count = models.PositiveIntegerField(default=0)
+    is_featured = models.BooleanField(default=False)
+    is_exclusive = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='draft'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
-    
-    def save(self, *args, **kwargs):
 
+    def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
             unique_slug = self.slug
             counter = 1
-            if Product.objects.filter(slug=unique_slug).exists():
+            while Product.objects.filter(slug=unique_slug).exclude(pk=self.pk).exists():
                 unique_slug = f'{self.slug}-{counter}'
                 counter += 1
             self.slug = unique_slug
         
+        # Calculate discount if old_price is set
+        if self.old_price and self.old_price > self.price:
+            discount = ((self.old_price - self.price) / self.old_price) * 100
+            self.discount = round(discount)
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def discount_percentage(self):
+        return f"{self.discount}%"
+    
+    @property
+    def is_in_stock(self):
+        return self.inventory.variants.filter(quantity__gt=0).exists()
+
+class ProductImage(models.Model):
+    product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='images'
+    )
+    image = models.ImageField(upload_to='products/')
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_primary', 'created_at']
+        verbose_name = 'Product Image'
+        verbose_name_plural = 'Product Images'
+
+    def __str__(self):
+        return f"Image for {self.product.name}"
+
+    def save(self, *args, **kwargs):
+        # If this is set as primary, ensure no other images are marked as primary
+        if self.is_primary:
+            ProductImage.objects.filter(
+                product=self.product, 
+                is_primary=True
+            ).update(is_primary=False)
         super().save(*args, **kwargs)
 
 
@@ -158,17 +259,18 @@ class Review(models.Model):
         ordering = ["-created"]
 
 
-
 class ProductRating(models.Model):
-    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name='rating')
+    product = models.OneToOneField(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='product_rating'  # Changed from default 'rating' to 'product_rating'
+    )
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.PositiveIntegerField(default=0)
-
+    
     def __str__(self):
-        return f"{self.product.name} - {self.average_rating} ({self.total_reviews} reviews)"
-
-
-
+        return f"{self.product.name} - {self.average_rating}"
+        
 
 class Wishlist(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wishlists")
@@ -179,8 +281,7 @@ class Wishlist(models.Model):
         unique_together = ["user", "product"]
 
     def __str__(self):
-        return f"{self.user.email} - {self.product.name}"
-    
+        return f"{self.user.email} - {self.product.name}" 
 
 
 
