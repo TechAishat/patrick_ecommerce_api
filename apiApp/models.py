@@ -1,11 +1,11 @@
-from django import forms
-from django.conf import settings
 from django.db import models
+from django.conf import settings
 from django.utils.text import slugify
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-
-# Create your models here.
-
+from django.db.models import Avg, Count
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+import uuid
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -29,7 +29,7 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class CustomUser(AbstractUser):
-    username = None  # CRITICAL: Disable username field
+    username = None
     USER_TYPE_CHOICES = (
         ('customer', 'Customer'),
         ('blog_editor', 'Blog Editor'),
@@ -40,19 +40,17 @@ class CustomUser(AbstractUser):
     profile_picture_url = models.URLField(blank=True, null=True)
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
     
-    objects = CustomUserManager()  # Add this line
+    objects = CustomUserManager()
     
-    USERNAME_FIELD = 'email'  # Use email for authentication
-    REQUIRED_FIELDS = []  # No additional fields required for superuser
-    
-    # Add this property for backward compatibility with your existing code
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
     @property
     def is_blog_editor(self):
         return self.user_type == 'blog_editor' or self.is_staff
 
     def __str__(self):
         return self.full_name or self.email
-    
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -72,9 +70,6 @@ class Category(models.Model):
         verbose_name_plural = "Categories"
         ordering = ['display_order', 'name']
 
-    def __str__(self):
-        return self.name
-
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
@@ -90,13 +85,11 @@ class Category(models.Model):
     def is_parent(self):
         return self.parent is None
 
-    @property
-    def children(self):
-        return self.get_children()
-
     def get_children(self):
         return self.children.all().order_by('display_order', 'name')
-  
+
+    def __str__(self):
+        return self.name
 
 class Product(models.Model):
     GENDER_CHOICES = [
@@ -116,39 +109,21 @@ class Product(models.Model):
     sku_base = models.CharField(max_length=50, blank=True, null=True)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    old_price = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True
-    )
+    old_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     discount = models.PositiveIntegerField(default=0)
-    category = models.ManyToManyField(
-        Category, 
-        related_name='products',
-        blank=True
-    )
-    gender = models.CharField(
-        max_length=10, 
-        choices=GENDER_CHOICES, 
-        default='unisex'
-    )
-    colors = models.JSONField(default=list, blank=True)  # Storing as JSON array
-    sizes = models.JSONField(default=list, blank=True)   # Storing as JSON array
-    rating_field = models.FloatField(default=0.0)  # Renamed from 'rating'
+    category = models.ManyToManyField(Category, related_name='products', blank=True)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='unisex')
+    colors = models.JSONField(default=list, blank=True)
+    sizes = models.JSONField(default=list, blank=True)
+    rating = models.FloatField(default=0.0)
     review_count = models.PositiveIntegerField(default=0)
     is_featured = models.BooleanField(default=False)
     is_exclusive = models.BooleanField(default=False)
-    status = models.CharField(
-        max_length=20, 
-        choices=STATUS_CHOICES, 
-        default='draft'
-    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    thumbnail = models.URLField(blank=True, null=True)
+    sub_category = models.CharField(max_length=100, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.name
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -160,80 +135,95 @@ class Product(models.Model):
                 counter += 1
             self.slug = unique_slug
         
-        # Calculate discount if old_price is set
         if self.old_price and self.old_price > self.price:
-            discount = ((self.old_price - self.price) / self.old_price) * 100
+            discount = ((float(self.old_price) - float(self.price)) / float(self.old_price)) * 100
             self.discount = round(discount)
         
         super().save(*args, **kwargs)
-    
+
     @property
     def discount_percentage(self):
         return f"{self.discount}%"
     
     @property
     def is_in_stock(self):
-        return self.inventory.variants.filter(quantity__gt=0).exists()
+        return any(variant['quantity'] > 0 for variant in self.variants.all().values('quantity'))
+
+    def __str__(self):
+        return self.name
+
+class ProductVariant(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
+    sku = models.CharField(max_length=100, unique=True)
+    color = models.CharField(max_length=50)
+    size = models.CharField(max_length=20)
+    quantity = models.PositiveIntegerField(default=0)
+    price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ['product', 'color', 'size']
+
+    @property
+    def price(self):
+        return self.price_override or self.product.price
+
+    def __str__(self):
+        return f"{self.product.name} - {self.color} - {self.size}"
 
 class ProductImage(models.Model):
-    product = models.ForeignKey(
-        Product, 
-        on_delete=models.CASCADE, 
-        related_name='images'
-    )
-    image = models.ImageField(upload_to='products/')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='images', null=True, blank=True)
+    image = models.ImageField(upload_to='product_images/')
     is_primary = models.BooleanField(default=False)
+    alt_text = models.CharField(max_length=255, blank=True, help_text='A description of the image for accessibility')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-is_primary', 'created_at']
-        verbose_name = 'Product Image'
-        verbose_name_plural = 'Product Images'
+
+    def save(self, *args, **kwargs):
+        if self.is_primary:
+            ProductImage.objects.filter(
+                product=self.product,
+                is_primary=True
+            ).exclude(pk=self.pk).update(is_primary=False)
+        super().save(*args, **kwargs)
+
+    @property
+    def image_url(self):
+        if self.image and hasattr(self.image, 'url'):
+            return self.image.url
+        return ""
 
     def __str__(self):
         return f"Image for {self.product.name}"
-
-    def save(self, *args, **kwargs):
-        # If this is set as primary, ensure no other images are marked as primary
-        if self.is_primary:
-            ProductImage.objects.filter(
-                product=self.product, 
-                is_primary=True
-            ).update(is_primary=False)
-        super().save(*args, **kwargs)
-
-
-import uuid
 
 class Cart(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="carts",
-        null=True,  # Allow NULL in the database
-        blank=True  # Allow blank in forms
+        null=True,
+        blank=True
     )
     cart_code = models.CharField(max_length=11, unique=True, default=uuid.uuid4().hex[:11])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return "Cart {} - {}".format(self.cart_code, self.user.email if self.user else "No User")
-
+        return f"Cart {self.cart_code} - {self.user.email if self.user else 'No User'}"
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="cartitems")
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="item")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="cart_items")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True)
     quantity = models.IntegerField(default=1)
 
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in cart {self.cart.cart_code}"
-    
-
 
 class Review(models.Model):
-
     RATING_CHOICES = [
         (1, '1 - Poor'),
         (2, '2 - Fair'),
@@ -242,82 +232,117 @@ class Review(models.Model):
         (5, '5 - Excellent'),
     ]
 
-
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="reviews")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reviews")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True)
     rating = models.PositiveIntegerField(choices=RATING_CHOICES)
-    review = models.TextField()
+    review = models.TextField(blank=True, null=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
-
-    def __str__(self):
-        return f"{self.user.email}'s review on {self.product.name}"
-    
     class Meta:
-        unique_together = ["user", "product"]
+        unique_together = [["user", "product", "variant"]]
         ordering = ["-created"]
 
+    def __str__(self):
+        return f"{self.user.email}'s {self.rating}★ review on {self.product.name}"
 
 class ProductRating(models.Model):
-    product = models.OneToOneField(
-        Product, 
-        on_delete=models.CASCADE, 
-        related_name='product_rating'  # Changed from default 'rating' to 'product_rating'
-    )
+    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name='rating_stats')
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.PositiveIntegerField(default=0)
-    
+    rating_breakdown = models.JSONField(default=dict)
+
     def __str__(self):
-        return f"{self.product.name} - {self.average_rating}"
-        
+        return f"{self.product.name} - {self.average_rating}★ ({self.total_reviews})"
+
+@receiver([post_save, post_delete], sender=Review)
+def update_product_rating(sender, instance, **kwargs):
+    product = instance.product
+    reviews = Review.objects.filter(product=product)
+    
+    avg_rating = reviews.aggregate(avg=Avg('rating'))['avg'] or 0
+    
+    breakdown = reviews.values('rating').annotate(count=Count('id'))
+    breakdown_dict = {str(rating): 0 for rating in range(1, 6)}
+    for item in breakdown:
+        breakdown_dict[str(item['rating'])] = item['count']
+    
+    ProductRating.objects.update_or_create(
+        product=product,
+        defaults={
+            'average_rating': round(avg_rating, 1),
+            'total_reviews': reviews.count(),
+            'rating_breakdown': breakdown_dict
+        }
+    )
+    
+    product.rating_field = avg_rating
+    product.review_count = reviews.count()
+    product.save(update_fields=['rating_field', 'review_count'])
 
 class Wishlist(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wishlists")
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="wishlist")
-    created = models.DateTimeField(auto_now_add=True) 
+    created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ["user", "product"]
 
     def __str__(self):
-        return f"{self.user.email} - {self.product.name}" 
-
-
+        return f"{self.user.email} - {self.product.name}"
 
 class Order(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('shipped', 'Shipped'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+    ]
+
     paystack_checkout_id = models.CharField(max_length=255, unique=True, default=uuid.uuid4)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default='NGN')
     customer_email = models.EmailField()
-    status = models.CharField(max_length=20, choices=[("Pending", "Pending"), ("Paid", "Paid")], default="Pending")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    shipping_address = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Order {self.paystack_checkout_id} - {self.status}"
-    
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.IntegerField(default=1)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
-        return f"Order {self.product.name} - {self.order.paystack_checkout_id}"
-    
-
-
-# Newly Added 
+        return f"{self.quantity}x {self.product.name} in order {self.order.id}"
 
 class CustomerAddress(models.Model):
-    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    street = models.CharField(max_length=50, blank=True, null=True)
-    state = models.CharField(max_length=50, blank=True, null=True)
-    city = models.CharField(max_length=50, blank=True, null=True)
-    phone = models.CharField(max_length=13, blank=True, null=True)
-
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='addresses')
+    full_name = models.CharField(max_length=100, default='Unknown Customer')
+    phone = models.CharField(max_length=20, default='+2340000000000')  # Default Nigerian number format
+    address_line1 = models.CharField(max_length=255, default='Default Address')
+    address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    city = models.CharField(max_length=100, default='Unknown')
+    state = models.CharField(max_length=100, default='Unknown')
+    postal_code = models.CharField(max_length=20, default='00000')
+    country = models.CharField(max_length=100, default='Nigeria')
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+ 
+    class Meta:
+        verbose_name_plural = 'Customer Addresses'
+        ordering = ['-is_default', '-created_at']
+ 
     def __str__(self):
-        return f"{self.customer.email} - {self.street} - {self.city}"
+        return f"{self.full_name} - {self.city}, {self.state}"
 
 class Notification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
@@ -337,8 +362,8 @@ class ContactMessage(models.Model):
     email = models.EmailField()
     subject = models.CharField(max_length=200)
     message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
     is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-created_at']

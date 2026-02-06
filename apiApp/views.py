@@ -12,10 +12,15 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.core.mail import send_mail
 from django.utils.encoding import force_str
+from rest_framework import generics
+from rest_framework.exceptions import ValidationError
+from django.db.models import Avg, Count
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.http import Http404 
 from rest_framework import status
 from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
 from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer
@@ -29,19 +34,58 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 @api_view(['GET', 'POST'])
+@permission_classes([AllowAny])  # Changed from IsAuthenticated to AllowAny for testing
 def product_list(request):
     if request.method == 'POST':
-        print("Request data:", request.data)  # Debug log
+        if not request.user.is_staff:
+            return Response(
+                {"error": "You don't have permission to perform this action."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
         serializer = ProductDetailSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             product = serializer.save()
-            # Return the serialized product data with a 201 status
             return Response(
                 ProductDetailSerializer(product, context={'request': request}).data,
                 status=status.HTTP_201_CREATED
             )
-        print("Serializer errors:", serializer.errors)  # Debug log
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+ 
+    # GET request handling
+    try:
+        # Start with base queryset
+        products = Product.objects.prefetch_related(
+            'variants',
+            'images',
+            'category',
+            'variants__images'
+        ).filter(status='published')
+        
+        # Apply filters
+        if category_slug := request.query_params.get('category'):
+            products = products.filter(category__slug=category_slug)
+        if featured := request.query_params.get('featured'):
+            products = products.filter(is_featured=featured.lower() == 'true')
+        if exclusive := request.query_params.get('exclusive'):
+            products = products.filter(is_exclusive=exclusive.lower() == 'true')
+        if gender := request.query_params.get('gender'):
+            products = products.filter(gender__iexact=gender)
+ 
+        # Ordering
+        products = products.order_by('-is_featured', '-created_at')
+        
+        # Remove pagination and return all results
+        serializer = ProductListSerializer(products, many=True, context={'request': request})
+        return Response(serializer.data)
+ 
+    except Exception as e:
+        logger.error(f"Error in product_list: {str(e)}")
+        return Response(
+            {"error": "An error occurred while processing your request."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+               
     
     # Get query parameters
     category_slug = request.query_params.get('category')
@@ -89,17 +133,37 @@ def product_list(request):
         'current_page': products_page.number,
         'results': serializer.data
     })
+    
 
-@api_view(['GET'])
-def product_detail(request, slug):
-    product = get_object_or_404(
-        Product.objects.select_related('inventory')
-                      .prefetch_related('images', 'reviews'),
-        slug=slug,
-        status='published'
-    )
-    serializer = ProductDetailSerializer(product, context={'request': request})
-    return Response(serializer.data)
+class ProductDetailView(generics.RetrieveAPIView):
+    """
+    GET: Get product details (public)
+    """
+    permission_classes = [AllowAny]
+    serializer_class = ProductDetailSerializer
+    lookup_field = 'slug'
+    queryset = Product.objects.prefetch_related(
+        'variants',
+        'images',
+        'variants__images',
+        'reviews'
+    ).all()
+ 
+    def get_serializer_context(self):
+        return {'request': self.request}
+ 
+    def get_object(self):
+        slug = self.kwargs.get('slug')
+        try:
+            return get_object_or_404(
+                self.get_queryset(),
+                slug=slug,
+                status='published'
+            )
+        except Exception as e:
+            logger.error(f"Error retrieving product {slug}: {str(e)}")
+            raise Http404("Product not found")
+
 
 @api_view(['GET'])
 def category_list(request):
@@ -243,21 +307,53 @@ def update_cartitem_quantity(request):
     return Response({"data": serializer.data, "message": "Cart item updated successfully!"})
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])  # Require authentication
 def add_review(request):
-    product_id = request.data.get("product_id")
-    email = request.data.get("email")
-    rating = request.data.get("rating")
-    review_text = request.data.get("review")
+    try:
+        product_id = request.data.get("product_id")
+        rating = request.data.get("rating")
+        review_text = request.data.get("review")
 
-    product = get_object_or_404(Product, id=product_id)
-    user = get_object_or_404(User, email=email)
+        # Validate required fields
+        if not all([product_id, rating, review_text]):
+            return Response(
+                {"error": "product_id, rating, and review are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    if Review.objects.filter(product=product, user=user).exists():
-        return Response({"error": "You already dropped a review for this product"}, status=400)
+        # Get the product
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-    review = Review.objects.create(product=product, user=user, rating=rating, review=review_text)
-    serializer = ReviewSerializer(review)
-    return Response(serializer.data)
+        # Check if review already exists for this user and product
+        if Review.objects.filter(product=product, user=request.user).exists():
+            return Response(
+                {"error": "You have already reviewed this product"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create the review
+        review = Review.objects.create(
+            product=product,
+            user=request.user,  # Use the authenticated user
+            rating=rating,
+            review=review_text
+        )
+        
+        # Serialize and return the response
+        serializer = ReviewSerializer(review)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['PUT'])
 def update_review(request, pk):
@@ -1049,3 +1145,85 @@ def manage_help_center(request, article_id=None):
                 {"error": "Article not found"}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+class RatingListCreateView(generics.ListCreateAPIView):
+    """
+    List all ratings or create a new rating.
+    """
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+ 
+    def get_queryset(self):
+        # Return only the current user's ratings
+        return Review.objects.filter(user=self.request.user).select_related('product')
+ 
+    def perform_create(self, serializer):
+        product_id = self.request.data.get('product')
+        variant_id = self.request.data.get('variant')
+        
+        # Check if user already reviewed this product-variant combination
+        existing_review = Review.objects.filter(
+            user=self.request.user,
+            product_id=product_id,
+            variant_id=variant_id if variant_id else None
+        ).exists()
+        
+        if existing_review:
+            raise ValidationError("You have already reviewed this product.")
+            
+        serializer.save(user=self.request.user)
+ 
+class RatingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update or delete a rating.
+    """
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+ 
+    def get_queryset(self):
+        # Users can only access their own ratings
+        return Review.objects.filter(user=self.request.user)
+ 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def product_ratings(request, product_id):
+    """
+    Get all ratings for a specific product.
+    """
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response(
+            {"error": "Product not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get all published reviews for the product
+    reviews = Review.objects.filter(
+        product=product,
+        is_published=True
+    ).select_related('user')
+    
+    # Calculate rating summary
+    rating_summary = reviews.aggregate(
+        average_rating=Avg('rating'),
+        total_ratings=Count('id'),
+        rating_1=Count('id', filter=Q(rating=1)),
+        rating_2=Count('id', filter=Q(rating=2)),
+        rating_3=Count('id', filter=Q(rating=3)),
+        rating_4=Count('id', filter=Q(rating=4)),
+        rating_5=Count('id', filter=Q(rating=5))
+    )
+    
+    # Serialize the reviews
+    serializer = ReviewSerializer(reviews, many=True)
+    
+    return Response({
+        'product_id': product_id,
+        'product_name': product.name,
+        'rating_summary': rating_summary,
+        'reviews': serializer.data
+    })
+
+

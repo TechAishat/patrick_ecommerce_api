@@ -3,10 +3,11 @@ from django.contrib.auth import get_user_model
 from .models import (
     Cart, CartItem, CustomerAddress, Order, OrderItem, 
     Product, Category, ProductRating, Review, Wishlist, 
-    Notification, ContactMessage, HelpCenterArticle, ProductImage
+    Notification, ContactMessage, HelpCenterArticle, ProductImage, ProductVariant
 )
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.db.models import Avg, Count
 from django.core.exceptions import ValidationError
 
 User = get_user_model()
@@ -44,39 +45,26 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    class Meta:
-        model = Review 
-        fields = ["id", "user", "rating", "review", "created", "updated"]
-
-
-class ProductRatingSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductRating 
-        fields =[ "id", "average_rating", "total_reviews"]
-
-class ProductListSerializer(serializers.ModelSerializer):
-    discount = serializers.SerializerMethodField()
-    primary_image = serializers.SerializerMethodField()
+    product_id = serializers.IntegerField(write_only=True)  # For writing
+    product = serializers.PrimaryKeyRelatedField(read_only=True)  # For reading
     
     class Meta:
-        model = Product
-        fields = [
-            "id", "name", "slug", "primary_image", "price", 
-            "old_price", "discount", "is_featured", "is_exclusive",
-            "rating"
-        ]
+        model = Review
+        fields = ["id", "user", "product", "product_id", "rating", "review", "created", "updated"]
     
-    def get_primary_image(self, obj):
-        image = obj.images.filter(is_primary=True).first() or obj.images.first()
-        if image and hasattr(image.image, 'url'):
-            return self.context['request'].build_absolute_uri(image.image.url)
-        return None
-    
-    def get_discount(self, obj):
-        if obj.old_price and obj.old_price > obj.price:
-            discount = ((obj.old_price - obj.price) / obj.old_price) * 100
-            return round(discount)
-        return 0
+    def create(self, validated_data):
+        # Get the user from the request context
+        user = self.context['request'].user
+        # Remove product_id from validated_data and get its value
+        product_id = validated_data.pop('product_id')
+        # Get the product instance
+        product = Product.objects.get(id=product_id)
+        # Create and return the review with the user
+        return Review.objects.create(
+            product=product,
+            user=user,
+            **validated_data
+        )
 
 class CategoryListSerializer(serializers.ModelSerializer):
     subcategories = serializers.SerializerMethodField()
@@ -89,106 +77,146 @@ class CategoryListSerializer(serializers.ModelSerializer):
         children = obj.get_children()
         return CategoryListSerializer(children, many=True).data
 
-class CategoryDetailSerializer(serializers.ModelSerializer):
-    products = ProductListSerializer(many=True, read_only=True)
-    subcategories = CategoryListSerializer(many=True, read_only=True, source='get_children')
-    
-    class Meta:
-        model = Category
-        fields = ["id", "name", "image", "products", "subcategories", "description"]
 
 
-class ProductDetailSerializer(serializers.ModelSerializer):
-    categories = CategoryListSerializer(many=True, read_only=True, source='category')
-    category_ids = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Category.objects.all(),
-        write_only=True,
-        source='category'
-    )
-    
-    # Keep all the SerializerMethodField definitions
+class ProductListSerializer(serializers.ModelSerializer):
+    isExclusive = serializers.BooleanField(source='is_exclusive')
+    oldPrice = serializers.DecimalField(source='old_price', max_digits=10, decimal_places=2, coerce_to_string=False, allow_null=True)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    category = serializers.SerializerMethodField()
+    subCategory = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    quantity = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
-    reviews = ReviewSerializer(read_only=True, many=True)
-    rating = ProductRatingSerializer(read_only=True)
-    poor_review = serializers.SerializerMethodField()
-    fair_review = serializers.SerializerMethodField()
-    good_review = serializers.SerializerMethodField()
-    very_good_review = serializers.SerializerMethodField()
-    excellent_review = serializers.SerializerMethodField()
-    similar_products = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
-    is_in_stock = serializers.BooleanField(read_only=True)
+    createdAt = serializers.DateTimeField(source='created_at', format='%Y-%m-%dT%H:%M:%S.000Z')
 
     class Meta:
         model = Product
         fields = [
-            "id", "name", "description", "slug", "price", "old_price", "discount",
-            "categories", "category_ids", "images", "reviews", "rating",
-            "poor_review", "fair_review", "good_review", "very_good_review",
-            "excellent_review", "similar_products", "colors", "sizes", "is_in_stock",
-            "gender", "is_featured", "is_exclusive", "created_at", "status"
+            'id', 'name', 'slug', 'isExclusive', 'gender', 'price', 'oldPrice',
+            'discount', 'category', 'subCategory', 'rating', 'status', 'quantity',
+            'images', 'colors', 'sizes', 'description', 'createdAt'
         ]
-        read_only_fields = ["slug", "created_at", "categories", "status"]
+
+    def get_category(self, obj):
+        # Return the first category's slug or a default
+        if obj.category.exists():
+            return obj.category.first().slug
+        return "uncategorized"
+
+    def get_subCategory(self, obj):
+        # Find the first subcategory
+        for category in obj.category.all():
+            if category.parent:
+                return category.slug
+        return "uncategorized"  # or None if you prefer
+
+    def get_status(self, obj):
+        total_quantity = sum(v.quantity for v in obj.variants.all())
+        return "inStock" if total_quantity > 0 else "outOfStock"
+
+    def get_quantity(self, obj):
+        return sum(v.quantity for v in obj.variants.all())
 
     def get_images(self, obj):
-        # Return empty list for now, you can implement this later
-        return []
-
-    def get_poor_review(self, obj):
-        return None  # Implement this if needed
-
-    def get_fair_review(self, obj):
-        return None  # Implement this if needed
-
-    def get_good_review(self, obj):
-        return None  # Implement this if needed
-
-    def get_very_good_review(self, obj):
-        return None  # Implement this if needed
-
-    def get_excellent_review(self, obj):
-        return None  # Implement this if needed
-
-    def get_similar_products(self, obj):
-        # Return empty list for now, you can implement this later
+        # Get primary images first, then others
+        primary_images = obj.images.filter(is_primary=True).order_by('id')
+        other_images = obj.images.filter(is_primary=False).order_by('id')
+        all_images = list(primary_images) + list(other_images)
+        
+        request = self.context.get('request')
+        if request:
+            return [request.build_absolute_uri(img.image.url) for img in all_images if img.image]
         return []
 
     def get_colors(self, obj):
-        return getattr(obj, 'colors', [])
+        # Return unique colors from variants
+        return list(set(v.color.lower() for v in obj.variants.all() if v.color))
 
     def get_sizes(self, obj):
-        return getattr(obj, 'sizes', [])
+        # Return unique sizes from variants
+        return list(set(v.size.upper() for v in obj.variants.all() if v.size))
 
-    def create(self, validated_data):
-        # Set default values
-        validated_data.setdefault('colors', [])
-        validated_data.setdefault('sizes', [])
-        validated_data.setdefault('status', 'draft')
-        validated_data.setdefault('is_featured', False)
-        validated_data.setdefault('is_exclusive', False)
-        validated_data.setdefault('review_count', 0)
-        validated_data.setdefault('rating_field', 0.0)
+    def to_representation(self, instance):
+        # Convert the response to match the desired format
+        data = super().to_representation(instance)
         
-        # Extract categories
-        categories = validated_data.pop('category', [])
+        # Convert ID to string if needed
+        data['id'] = str(data['id'])
         
-        # Create the product
-        product = Product.objects.create(**validated_data)
+        # Ensure rating is a float with one decimal place
+        data['rating'] = float(data.get('rating', 0))
         
-        # Add categories
-        if categories:
-            product.category.set(categories)
+        return data
+ 
+
+class CategoryDetailSerializer(serializers.ModelSerializer):
+    products = ProductListSerializer(many=True, read_only=True)
+    subcategories = CategoryListSerializer(many=True, read_only=True, source='children')
+    
+    class Meta:
+        model = Category
+        fields = ["id", "name", "slug", "description", "image", "products", "subcategories"]
+        read_only_fields = ['slug']
+
+class ProductRatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductRating 
+        fields =[ "id", "average_rating", "total_reviews"]
+
+
+class ProductDetailSerializer(ProductListSerializer):
+    variants = serializers.SerializerMethodField()
+    reviewStats = serializers.SerializerMethodField()
+    
+    class Meta(ProductListSerializer.Meta):
+        fields = ProductListSerializer.Meta.fields + ['variants', 'reviewStats']
+    
+    def get_variants(self, obj):
+        variants = obj.variants.all()
+        return [{
+            'id': variant.id,
+            'color': variant.color,
+            'size': variant.size,
+            'quantity': variant.quantity,
+            'price': float(variant.price),  # Convert Decimal to float for JSON
+            'images': [
+                self.context['request'].build_absolute_uri(img.image.url)
+                for img in variant.images.all()
+                if img.image and hasattr(img.image, 'url')
+            ]
+        } for variant in variants]
+ 
+    def get_reviewStats(self, obj):
+        reviews = Review.objects.filter(product=obj)
+        rating_avg = reviews.aggregate(Avg('rating'))['rating__avg'] or 0
+        rating_count = reviews.count()
         
-        return product
+        # Calculate rating breakdown
+        breakdown = {str(i): 0 for i in range(1, 6)}
+        for i in range(1, 6):
+            breakdown[str(i)] = reviews.filter(rating=i).count()
+        
+        return {
+            'rating': round(float(rating_avg), 1),
+            'totalReviews': rating_count,
+            'breakdown': breakdown
+        }
         
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+ 
     class Meta:
         model = ProductImage
-        fields = ['id', 'image', 'is_primary', 'alt_text']
-        read_only_fields = ['product']
+        fields = ['url']
+    
+    def get_url(self, obj):
+        if obj.image and hasattr(obj.image, 'url'):
+            return self.context['request'].build_absolute_uri(obj.image.url)
+        return ""
 
 
 class CartItemSerializer(serializers.ModelSerializer):

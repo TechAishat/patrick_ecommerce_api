@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Cart, CartItem, Category, CustomUser, Order, OrderItem, Product, 
     ProductRating, Review, Wishlist, CustomerAddress, Notification,
-    ContactMessage, HelpCenterArticle, ProductImage
+    ContactMessage, HelpCenterArticle, ProductImage, ProductVariant
 )
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
@@ -10,7 +10,6 @@ from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils.http import urlencode
 
-# Register your models here.
 
 class CustomUserAdmin(UserAdmin):
     list_display = ("email", "full_name", "user_type", "is_staff")
@@ -36,40 +35,83 @@ class CustomUserAdmin(UserAdmin):
     
     ordering = ('email',)
 
-admin.site.register(CustomUser, CustomUserAdmin)
-
-
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
-    readonly_fields = ['preview_image']
-
+    max_num = 3
+    fields = ('image', 'is_primary', 'preview_image')
+    readonly_fields = ('preview_image',)
+ 
     def preview_image(self, obj):
-        if obj.image:
+        if obj.image and hasattr(obj.image, 'url'):
             return mark_safe(f'<img src="{obj.image.url}" width="100" height="auto" />')
         return "No Image"
     preview_image.short_description = 'Preview'
 
-class ProductAdmin(admin.ModelAdmin):
-    list_display = ["name", "price", "is_featured", "is_exclusive", "status", "display_primary_image"]
-    list_filter = ("status", "is_featured", "is_exclusive", "gender", "category")
-    search_fields = ("name", "description", "sku_base")
-    readonly_fields = ('created_at', 'updated_at', 'slug')
-    filter_horizontal = ('category',)
-    inlines = [ProductImageInline]
+
+class ProductVariantInline(admin.TabularInline):
+    model = ProductVariant
+    extra = 1
+    fields = ('sku', 'color', 'size', 'quantity', 'price_override', 'is_in_stock_display')  # Changed is_in_stock to is_in_stock_display
+    readonly_fields = ('is_in_stock_display',)  # Make sure this is in readonly_fields
+    show_change_link = True
+    classes = ('collapse',)
+    
+    def is_in_stock_display(self, obj):
+        if obj.quantity > 0:
+            return mark_safe('<span style="color: #2ecc71; font-weight: bold;">In Stock</span>')
+        return mark_safe('<span style="color: #e74c3c; font-weight: bold;">Out of Stock</span>')
+    is_in_stock_display.short_description = 'Stock Status'
+    
+    def has_add_permission(self, request, obj=None):
+        return True
+        
+    def has_change_permission(self, request, obj=None):
+        return True
+
+
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = (
+        'display_thumbnail',
+        'product_link',
+        'sku_link',
+        'color_display',
+        'size_display',
+        'quantity',
+        'price_override',
+        'stock_status',
+    )
+    
+    list_filter = (
+        'color', 
+        'size',
+    )
+    
+    search_fields = (
+        'sku',
+        'product__name',
+        'color',
+        'size',
+        'product__sku_base'
+    )
+    
+    readonly_fields = (
+        'stock_status',
+        'display_thumbnail'
+    )
     
     fieldsets = (
         (None, {
-            'fields': ('name', 'slug', 'description', 'category')
+            'fields': ('product', 'sku', 'display_thumbnail')
         }),
-        ('Pricing', {
-            'fields': ('price', 'old_price', 'discount')
-        }),
-        ('Details', {
-            'fields': ('sku_base', 'gender', 'colors', 'sizes', 'review_count')
-        }),
-        ('Status', {
-            'fields': ('is_featured', 'is_exclusive', 'status')
+        ('Variant Details', {
+            'fields': (
+                'color',
+                'size',
+                'quantity',
+                'price_override',
+                'stock_status'
+            )
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -77,14 +119,178 @@ class ProductAdmin(admin.ModelAdmin):
         }),
     )
 
-    def display_primary_image(self, obj):
-        primary_image = obj.images.filter(is_primary=True).first()
-        if primary_image:
-            return mark_safe(f'<img src="{primary_image.image.url}" width="50" height="50" style="object-fit: cover;" />')
+    def display_thumbnail(self, obj):
+        if obj.images.exists():
+            img = obj.images.first()
+            if hasattr(img.image, 'url'):
+                return mark_safe(
+                    f'<img src="{img.image.url}" width="50" height="50" '
+                    'style="object-fit: cover; border-radius: 4px;" />'
+                )
         return "No Image"
-    display_primary_image.short_description = 'Image'
-    display_primary_image.allow_tags = True
+    display_thumbnail.short_description = 'Thumbnail'
 
+    def product_link(self, obj):
+        url = reverse('admin:apiApp_product_change', args=[obj.product.id])
+        return mark_safe(f'<a href="{url}">{obj.product.name}</a>')
+    product_link.short_description = 'Product'
+
+    def sku_link(self, obj):
+        url = reverse('admin:apiApp_productvariant_change', args=[obj.id])
+        return mark_safe(f'<a href="{url}">{obj.sku or "-"}</a>')
+    sku_link.short_description = 'SKU'
+
+    def color_display(self, obj):
+        return obj.color.title() if obj.color else "-"
+    color_display.short_description = 'Color'
+
+    def size_display(self, obj):
+        return obj.size.upper() if obj.size else "-"
+    size_display.short_description = 'Size'
+
+    def stock_status(self, obj):
+        if obj.quantity > 10:
+            return mark_safe('<span style="color: #2ecc71;">In Stock</span>')
+        elif obj.quantity > 0:
+            return mark_safe('<span style="color: #f39c12;">Low Stock</span>')
+        return mark_safe('<span style="color: #e74c3c;">Out of Stock</span>')
+    stock_status.short_description = 'Status'
+
+    def created_short(self, obj):
+        return obj.created_at.strftime('%b %d, %Y')
+    created_short.short_description = 'Created'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('product')
+
+    class Media:
+        css = {
+            'all': ('admin/css/variants.css',)
+        }
+
+class ProductAdmin(admin.ModelAdmin):
+    list_display = [
+        'name', 
+        'price_display', 
+        'stock_status',
+        'quantity_in_stock',
+        'is_featured_display',
+        'is_exclusive_display',
+        'status_display',
+        'category_list'
+    ]
+    
+    list_filter = (
+        'status', 
+        'is_featured', 
+        'is_exclusive', 
+        'gender', 
+        'category',
+        'created_at'
+    )
+    
+    search_fields = (
+        'name', 
+        'description', 
+        'sku_base',
+        'variants__sku'
+    )
+    
+    readonly_fields = (
+        'created_at', 
+        'updated_at', 
+        'slug',
+        'stock_status',
+    )
+    
+    filter_horizontal = ('category',)
+    inlines = [ProductImageInline, ProductVariantInline]
+    list_select_related = ()
+    list_per_page = 25
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+    (None, {
+        'fields': ('name', 'slug', 'description', 'category')
+    }),
+    ('Pricing', {
+        'fields': ('price', 'old_price', 'discount')
+    }),
+    ('Inventory', {
+        'fields': ('stock_status',)  # Removed total_quantity from here
+    }),
+    ('Details', {
+        'fields': ('sku_base', 'gender', 'colors', 'sizes', 'review_count')
+    }),
+    ('Status', {
+        'fields': ('is_featured', 'is_exclusive', 'status')
+    }),
+    ('Timestamps', {
+        'fields': ('created_at', 'updated_at'),
+        'classes': ('collapse',)
+    }),
+)
+
+    def price_display(self, obj):
+        if obj.old_price and obj.old_price > obj.price:
+            return mark_safe(
+                f'<span style="text-decoration: line-through; color: #999;">${obj.old_price}</span> '
+                f'<span style="color: #e74c3c; font-weight: bold;">${obj.price}</span>'
+            )
+        return f"${obj.price}"
+    price_display.short_description = 'Price'
+    
+    def status_display(self, obj):
+        status_style = {
+            'published': ('#2ecc71', 'Published'),
+            'draft': ('#f39c12', 'Draft'),
+            'archived': ('#e74c3c', 'Archived')
+        }
+        color, text = status_style.get(obj.status, ('#7f8c8d', obj.status))
+        return mark_safe(f'<span style="color: {color}; font-weight: bold;">{text}</span>')
+    status_display.short_description = 'Status'
+    
+    def stock_status(self, obj):
+        total = sum(variant.quantity for variant in obj.variants.all())
+        if total > 10:
+            return mark_safe('<span style="color: #2ecc71;">In Stock</span>')
+        elif total > 0:
+            return mark_safe('<span style="color: #f39c12;">Low Stock</span>')
+        return mark_safe('<span style="color: #e74c3c;">Out of Stock</span>')
+    stock_status.short_description = 'In Stock'
+    
+    def quantity_in_stock(self, obj):
+        total = sum(variant.quantity for variant in obj.variants.all())
+        if total > 10:
+            style = 'color: #2ecc71; font-weight: bold;'
+        elif total > 0:
+            style = 'color: #f39c12; font-weight: bold;'
+        else:
+            style = 'color: #e74c3c; font-weight: bold;'
+        return mark_safe(f'<span style="{style}">{total}</span>')
+    quantity_in_stock.short_description = 'Qty'
+    
+    def is_featured_display(self, obj):
+        return obj.is_featured
+    is_featured_display.short_description = 'Featured'
+    is_featured_display.boolean = True
+    
+    def is_exclusive_display(self, obj):
+        return obj.is_exclusive
+    is_exclusive_display.short_description = 'Exclusive'
+    is_exclusive_display.boolean = True
+    
+    def category_list(self, obj):
+        return ", ".join([c.name for c in obj.category.all()])
+    category_list.short_description = 'Categories'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('variants', 'category')
+
+    class Media:
+        css = {
+            'all': ('admin/css/products.css',)
+        }
 
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ["name", "slug", "parent", "is_featured", "display_order"]
@@ -135,9 +341,10 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
 
 class CustomerAddressAdmin(admin.ModelAdmin):
-    list_display = ("customer", "street", "city", "state", "phone")
-    search_fields = ("customer__email", "street", "city", "state")
-    list_filter = ("state", "city")
+    list_display = ('id', 'customer', 'address_line1', 'city', 'state', 'country', 'is_default')
+    list_filter = ('city', 'state', 'country', 'is_default')
+    search_fields = ('customer__email', 'address_line1', 'city', 'postal_code')
+    list_select_related = ('customer',)
 
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("user", "title", "is_read", "created_at")
@@ -159,6 +366,7 @@ class HelpCenterArticleAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 # Register all models with their admin classes
+admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(Product, ProductAdmin)
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(Review, ReviewAdmin)
@@ -173,3 +381,4 @@ admin.site.register(Notification, NotificationAdmin)
 admin.site.register(ContactMessage, ContactMessageAdmin)
 admin.site.register(HelpCenterArticle, HelpCenterArticleAdmin)
 admin.site.register(ProductImage)
+admin.site.register(ProductVariant, ProductVariantAdmin)
