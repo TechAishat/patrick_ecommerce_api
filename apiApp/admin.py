@@ -113,10 +113,6 @@ class ProductVariantAdmin(admin.ModelAdmin):
                 'stock_status'
             )
         }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
     )
 
     def display_thumbnail(self, obj):
@@ -155,10 +151,6 @@ class ProductVariantAdmin(admin.ModelAdmin):
             return mark_safe('<span style="color: #f39c12;">Low Stock</span>')
         return mark_safe('<span style="color: #e74c3c;">Out of Stock</span>')
     stock_status.short_description = 'Status'
-
-    def created_short(self, obj):
-        return obj.created_at.strftime('%b %d, %Y')
-    created_short.short_description = 'Created'
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('product')
