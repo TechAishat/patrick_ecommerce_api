@@ -1,6 +1,11 @@
 from django.urls import path, include
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 from . import views
 from .views import (
     get_cart, add_to_cart, create_cart, product_list, 
@@ -11,6 +16,11 @@ from .views import (
 app_name = 'api'  # Add this for namespacing
 
 urlpatterns = [
+    # JWT Authentication
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+
     # Products
     path('products/', product_list, name='product-list'),
     path('products/<slug:slug>/', ProductDetailView.as_view(), name='product-detail'),

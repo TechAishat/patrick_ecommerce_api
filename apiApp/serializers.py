@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from django.db.models import Avg, Count
 from django.core.exceptions import ValidationError
+from django.db.models import Sum
 
 User = get_user_model()
 
@@ -71,7 +72,7 @@ class CategoryListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Category
-        fields = ["id", "name", "image", "slug", "is_featured", "subcategories"]
+        fields = ["id", "name", "slug", "is_featured", "subcategories"]
     
     def get_subcategories(self, obj):
         children = obj.get_children()
@@ -101,17 +102,15 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
 
     def get_category(self, obj):
-        # Return the first category's slug or a default
         if obj.category.exists():
             return obj.category.first().slug
         return "uncategorized"
 
     def get_subCategory(self, obj):
-        # Find the first subcategory
         for category in obj.category.all():
             if category.parent:
                 return category.slug
-        return "uncategorized"  # or None if you prefer
+        return "uncategorized"
 
     def get_status(self, obj):
         total_quantity = sum(v.quantity for v in obj.variants.all())
@@ -121,34 +120,58 @@ class ProductListSerializer(serializers.ModelSerializer):
         return sum(v.quantity for v in obj.variants.all())
 
     def get_images(self, obj):
-        # Get primary images first, then others
+        request = self.context.get('request')
+        if obj.is_exclusive and (not request or not request.user.is_authenticated):
+            # Return only the first image or a placeholder for exclusive products
+            first_image = obj.images.filter(is_primary=True).first() or obj.images.first()
+            if first_image and first_image.image:
+                return [request.build_absolute_uri(first_image.image.url)] if request else [first_image.image.url]
+            return []
+            
         primary_images = obj.images.filter(is_primary=True).order_by('id')
         other_images = obj.images.filter(is_primary=False).order_by('id')
         all_images = list(primary_images) + list(other_images)
         
-        request = self.context.get('request')
         if request:
-            return [request.build_absolute_uri(img.image.url) for img in all_images if img.image]
-        return []
+            return [request.build_absolute_uri(img.image.url) for img in all_images if img and img.image]
+        return [img.image.url for img in all_images if img and img.image]
 
     def get_colors(self, obj):
-        # Return unique colors from variants
+        if obj.is_exclusive and not self.context.get('request', None) or not self.context['request'].user.is_authenticated:
+            return []
         return list(set(v.color.lower() for v in obj.variants.all() if v.color))
 
     def get_sizes(self, obj):
-        # Return unique sizes from variants
+        if obj.is_exclusive and not self.context.get('request', None) or not self.context['request'].user.is_authenticated:
+            return []
         return list(set(v.size.upper() for v in obj.variants.all() if v.size))
 
     def to_representation(self, instance):
-        # Convert the response to match the desired format
         data = super().to_representation(instance)
+        request = self.context.get('request')
         
-        # Convert ID to string if needed
+        # For unauthenticated users viewing exclusive products
+        if instance.is_exclusive and (not request or not request.user.is_authenticated):
+            return {
+                'id': str(instance.id),
+                'name': instance.name,
+                'isExclusive': True,
+                'slug': instance.slug,
+                'images': self.get_images(instance),  # Limited images
+                'message': 'Login to view this exclusive product',
+                'requires_auth': True
+            }
+            
+        # For all other cases, ensure proper data formatting
         data['id'] = str(data['id'])
-        
-        # Ensure rating is a float with one decimal place
         data['rating'] = float(data.get('rating', 0))
         
+        # Ensure price and oldPrice are properly formatted
+        if 'price' in data and data['price'] is not None:
+            data['price'] = str(round(float(data['price']), 2))
+        if 'oldPrice' in data and data['oldPrice'] is not None:
+            data['oldPrice'] = str(round(float(data['oldPrice']), 2))
+            
         return data
  
 
@@ -220,43 +243,71 @@ class ProductImageSerializer(serializers.ModelSerializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    product = ProductListSerializer(read_only=True)
+    product = serializers.SerializerMethodField()
     sub_total = serializers.SerializerMethodField()
+    
     class Meta:
         model = CartItem 
         fields = ["id", "product", "quantity", "sub_total"]
-
     
-    def get_sub_total(self, cartitem):
-        total = cartitem.product.price * cartitem.quantity 
-        return total
+    def get_product(self, obj):
+        # Return only essential product fields
+        return {
+            "id": obj.product.id,
+            "name": obj.product.name,
+            "price": str(obj.product.price),
+            "image": self.context['request'].build_absolute_uri(obj.product.images.first().image.url) if obj.product.images.exists() else None
+        }
+    
+    def get_sub_total(self, obj):
+        return float(obj.product.price) * obj.quantity
+
 
 class CartSerializer(serializers.ModelSerializer):
-    cartitems = CartItemSerializer(read_only=True, many=True)
-    cart_total = serializers.SerializerMethodField()
-    user = UserSerializer(read_only=True)  # Add this line to include user details
+    items = CartItemSerializer(source='cartitems', many=True, read_only=True)
+    total = serializers.SerializerMethodField()
     
     class Meta:
         model = Cart 
-        fields = ["id", "cart_code", "user", "cartitems", "cart_total", "created_at", "updated_at"]
-        read_only_fields = ["user", "cart_code", "created_at", "updated_at"]  # Ensure these are read-only
-
-    def get_cart_total(self, cart):
-        items = cart.cartitems.all()
-        total = sum([item.quantity * item.product.price for item in items])
-        return total
+        fields = ["id", "items", "total"]
+    
+    def get_total(self, obj):
+        return float(sum(
+            item.quantity * item.product.price 
+            for item in obj.cartitems.all()
+        ))
     
 
-class CartStatSerializer(serializers.ModelSerializer): 
+class CartStatSerializer(serializers.ModelSerializer):
+    item_count = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
+    
     class Meta:
-        model = Cart 
-        fields = ["id", "cart_code", "total_quantity"]
+        model = Cart
+        fields = ['id', 'item_count', 'total_quantity', 'items']
+
+    def get_item_count(self, cart):
+        return cart.cartitems.count()
 
     def get_total_quantity(self, cart):
-        items = cart.cartitems.all()
-        total = sum([item.quantity for item in items])
-        return total
+        return cart.cartitems.aggregate(total=Sum('quantity'))['total'] or 0
+        
+    def get_items(self, cart):
+        items = []
+        for item in cart.cartitems.all():
+            items.append({
+                'product_name': item.product.name,
+                'category': item.product.category.name if item.product.category else "",
+                'subcategory': item.product.subcategory.name if hasattr(item.product, 'subcategory') and item.product.subcategory else "",
+                'quantity': item.quantity,
+                'price': str(item.product.price),
+                'total': float(item.quantity * item.product.price),
+                'color': item.variant.color if item.variant and hasattr(item.variant, 'color') else None,
+                'size': item.variant.size if item.variant and hasattr(item.variant, 'size') else None
+            })
+        return items
+
 
 class WishlistSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

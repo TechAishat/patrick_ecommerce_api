@@ -62,7 +62,6 @@ class Category(models.Model):
         blank=True, 
         related_name='children'
     )
-    image = models.FileField(upload_to="category_img", blank=True, null=True)
     is_featured = models.BooleanField(default=False)
     display_order = models.PositiveIntegerField(default=0)
 

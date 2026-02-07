@@ -1,3 +1,6 @@
+from rest_framework.views import exception_handler
+from rest_framework.exceptions import PermissionDenied
+from rest_framework import status
 import json
 import uuid
 import hmac
@@ -20,13 +23,34 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.http import Http404 
-from rest_framework import status
-from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle
-from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer
+from django.http import Http404
+from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle, ProductVariant
+from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer, CartStatSerializer
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.shortcuts import get_object_or_404
+
+
+
+def custom_exception_handler(exc, context):
+    """
+    Custom exception handler for DRF that adds special handling for PermissionDenied
+    exceptions related to exclusive products.
+    """
+    # Call REST framework's default exception handler first
+    response = exception_handler(exc, context)
+    
+    # Handle PermissionDenied for exclusive products
+    if isinstance(exc, PermissionDenied) and hasattr(exc, 'detail') and isinstance(exc.detail, dict):
+        if exc.detail.get('code') == 'authentication_required':
+            return Response({
+                'error': 'Authentication required',
+                'requires_login': True,
+                'detail': exc.detail.get('detail', 'Authentication required')
+            }, status=status.HTTP_403_FORBIDDEN)
+    
+    return response
 
 
 logger = logging.getLogger(__name__)
@@ -137,7 +161,9 @@ def product_list(request):
 
 class ProductDetailView(generics.RetrieveAPIView):
     """
-    GET: Get product details (public)
+    GET: Get product details
+    - Public access for non-exclusive products
+    - Requires authentication for exclusive products
     """
     permission_classes = [AllowAny]
     serializer_class = ProductDetailSerializer
@@ -155,17 +181,32 @@ class ProductDetailView(generics.RetrieveAPIView):
     def get_object(self):
         slug = self.kwargs.get('slug')
         try:
-            return get_object_or_404(
+            product = get_object_or_404(
                 self.get_queryset(),
                 slug=slug,
                 status='published'
             )
+            
+            # Check if product is exclusive and user is not authenticated
+            if product.is_exclusive and not self.request.user.is_authenticated:
+                raise PermissionDenied({
+                    "detail": "Authentication required to view this product",
+                    "code": "authentication_required",
+                    "requires_login": True
+                })
+                
+            return product
+            
+        except Product.DoesNotExist:
+            logger.error(f"Product not found: {slug}")
+            raise Http404("Product not found")
         except Exception as e:
             logger.error(f"Error retrieving product {slug}: {str(e)}")
-            raise Http404("Product not found")
+            raise
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def category_list(request):
     # Get only parent categories (categories without a parent)
     categories = Category.objects.filter(parent__isnull=True).order_by('display_order', 'name')
@@ -173,6 +214,7 @@ def category_list(request):
     return Response(serializer.data)
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def category_detail(request, slug):
     category = get_object_or_404(
         Category.objects.prefetch_related('children', 'products'),
@@ -225,8 +267,7 @@ def add_to_cart(request):
     try:
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 1))
-        color = request.data.get('color')
-        size = request.data.get('size')
+        variant_id = request.data.get('variant_id')
         
         # Get or create cart for the user
         cart, created = Cart.objects.get_or_create(
@@ -240,22 +281,17 @@ def add_to_cart(request):
         # Check if product is in stock
         if not product.is_in_stock:
             return Response(
-                {"detail": "This product is currently out of stock."},
+                {"success": False, "message": "This product is currently out of stock."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check if there's enough stock for the requested quantity
+        # Get the variant if variant_id is provided
         variant = None
-        if hasattr(product, 'inventory'):
-            variant = product.inventory.variants.filter(
-                color=color,
-                size=size,
-                quantity__gte=quantity
-            ).first()
-            
-            if not variant:
+        if variant_id:
+            variant = get_object_or_404(ProductVariant, id=variant_id, product=product)
+            if variant.quantity < quantity:
                 return Response(
-                    {"detail": "Selected variant is not available in the requested quantity."},
+                    {"success": False, "message": "Not enough stock available for the selected variant."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
@@ -263,8 +299,7 @@ def add_to_cart(request):
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
-            color=color,
-            size=size,
+            variant=variant,
             defaults={'quantity': quantity}
         )
         
@@ -272,24 +307,41 @@ def add_to_cart(request):
             new_quantity = cart_item.quantity + quantity
             if variant and new_quantity > variant.quantity:
                 return Response(
-                    {"detail": "Not enough stock available."},
+                    {"success": False, "message": "Not enough stock available."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             cart_item.quantity = new_quantity
             cart_item.save()
         
-        serializer = CartSerializer(cart, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # Get updated cart stats
+        cart.refresh_from_db()
+        try:
+            from .serializers import CartStatSerializer
+            stat_serializer = CartStatSerializer(cart)
+            cart_data = stat_serializer.data
+        except (ImportError, AttributeError):
+            # Fallback if CartStatSerializer is not available
+            cart_data = {
+                "id": cart.id,
+                "item_count": cart.cartitems.count(),
+                "total": float(sum(item.quantity * item.product.price for item in cart.cartitems.all()))
+            }
+        
+        return Response({
+            "success": True,
+            "message": "Item added to cart successfully",
+            "cart": cart_data
+        }, status=status.HTTP_200_OK)
     
-    except Product.DoesNotExist:
+    except (Product.DoesNotExist, ProductVariant.DoesNotExist) as e:
         return Response(
-            {"detail": "Product not found."},
+            {"success": False, "message": "Product or variant not found."},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        logger.error(f"Error adding to cart: {str(e)}", exc_info=True)
+        logger.error(f"Error in add_to_cart: {str(e)}", exc_info=True)
         return Response(
-            {"detail": "Failed to add item to cart. Please try again."},
+            {"success": False, "message": "An error occurred while processing your request."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
