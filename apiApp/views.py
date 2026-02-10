@@ -261,71 +261,94 @@ def category_detail(request, slug):
         }
     })
 
+
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def add_to_cart(request):
     try:
+        # Get or create a cart code in session
+        if 'cart_code' not in request.session:
+            request.session['cart_code'] = str(uuid.uuid4())
+        cart_code = request.session['cart_code']
+
+        # Get request data
         product_id = request.data.get('product_id')
         quantity = int(request.data.get('quantity', 1))
-        variant_id = request.data.get('variant_id')
+        color = request.data.get('color')
+        size = request.data.get('size')
         
-        # Get or create cart for the user
+        # Get or create cart using cart_code
         cart, created = Cart.objects.get_or_create(
-            user=request.user,
-            defaults={'user': request.user}
+            cart_code=cart_code,
+            defaults={'cart_code': cart_code}
         )
         
-        # Get the product
-        product = get_object_or_404(Product, id=product_id, status='published')
-        
-        # Check if product is in stock
-        if not product.is_in_stock:
-            return Response(
-                {"success": False, "message": "This product is currently out of stock."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get the variant if variant_id is provided
-        variant = None
-        if variant_id:
-            variant = get_object_or_404(ProductVariant, id=variant_id, product=product)
-            if variant.quantity < quantity:
-                return Response(
-                    {"success": False, "message": "Not enough stock available for the selected variant."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        # Create or update cart item
-        cart_item, created = CartItem.objects.get_or_create(
-            cart=cart,
-            product=product,
-            variant=variant,
-            defaults={'quantity': quantity}
+        # Get the product with categories prefetched
+        product = get_object_or_404(
+            Product.objects.prefetch_related('category'),  # Changed from 'categories' to 'category'
+            id=product_id,
+            status='published'
         )
         
-        if not created:
-            new_quantity = cart_item.quantity + quantity
-            if variant and new_quantity > variant.quantity:
-                return Response(
-                    {"success": False, "message": "Not enough stock available."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            cart_item.quantity = new_quantity
-            cart_item.save()
+        # Rest of your existing code remains the same until the cart items loop
         
-        # Get updated cart stats
-        cart.refresh_from_db()
-        try:
-            from .serializers import CartStatSerializer
-            stat_serializer = CartStatSerializer(cart)
-            cart_data = stat_serializer.data
-        except (ImportError, AttributeError):
-            # Fallback if CartStatSerializer is not available
-            cart_data = {
-                "id": cart.id,
-                "item_count": cart.cartitems.count(),
-                "total": float(sum(item.quantity * item.product.price for item in cart.cartitems.all()))
-            }
+        # Get cart items with related data
+        cart_items = CartItem.objects.filter(cart=cart).select_related(
+            'product',
+            'variant'
+        ).prefetch_related(
+            'product__category',  # Changed from select_related to prefetch_related
+            'product__category__parent'
+        )
+        
+        items = []
+        total_quantity = 0
+        
+        for item in cart_items:
+            variant_color = item.variant.color if item.variant else None
+            variant_size = item.variant.size if item.variant else None
+            
+            # Initialize category variables
+            category_name = None
+            subcategory_name = ""
+            
+            # Get all categories for the product
+            # Inside the cart items loop, replace the category access code with:
+            if hasattr(item.product, 'category') and item.product.category.exists():
+                # Get all categories for the product
+                categories = item.product.category.all().order_by('name')
+                
+                # Get the first category as main category
+                if categories:
+                    main_category = categories[0]
+                    category_name = main_category.name
+                    
+                    # If there's a second category, use it as subcategory
+                    if len(categories) > 1:
+                        subcategory_name = categories[1].name
+                    # Or if the category has a parent, use that as main category
+                    elif hasattr(main_category, 'parent') and main_category.parent:
+                        category_name = main_category.parent.name
+                        subcategory_name = main_category.name
+            
+            items.append({
+                "product_name": item.product.name,
+                "category": category_name,
+                "subcategory": subcategory_name,
+                "quantity": item.quantity,
+                "price": str(item.product.price),
+                "total": float(item.product.price * item.quantity),
+                "color": variant_color,
+                "size": variant_size
+            })
+            total_quantity += item.quantity
+
+        cart_data = {
+            "id": cart.id,
+            "item_count": cart_items.count(),
+            "total_quantity": total_quantity,
+            "items": items
+        }
         
         return Response({
             "success": True,
@@ -341,7 +364,7 @@ def add_to_cart(request):
     except Exception as e:
         logger.error(f"Error in add_to_cart: {str(e)}", exc_info=True)
         return Response(
-            {"success": False, "message": "An error occurred while processing your request."},
+            {"success": False, "message": f"An error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
