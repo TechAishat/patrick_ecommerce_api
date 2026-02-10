@@ -277,6 +277,9 @@ def add_to_cart(request):
         color = request.data.get('color')
         size = request.data.get('size')
         
+        # Debug: Log the incoming request data
+        logger.info(f"Add to cart request - Product ID: {product_id}, Quantity: {quantity}, Color: {color}, Size: {size}")
+
         # Get or create cart using cart_code
         cart, created = Cart.objects.get_or_create(
             cart_code=cart_code,
@@ -284,23 +287,57 @@ def add_to_cart(request):
         )
         
         # Get the product with categories prefetched
-        product = get_object_or_404(
-            Product.objects.prefetch_related('category'),  # Changed from 'categories' to 'category'
-            id=product_id,
-            status='published'
+        try:
+            product = Product.objects.prefetch_related('category').get(
+                id=product_id,
+                status='published'
+            )
+            logger.info(f"Product found: {product.name}")
+        except Product.DoesNotExist:
+            logger.error(f"Product not found or not published: {product_id}")
+            return Response(
+                {"success": False, "message": "Product not found or not published."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Find the variant
+        variant = None
+        if color or size:
+            variant_query = ProductVariant.objects.filter(product=product)
+            if color:
+                variant_query = variant_query.filter(color=color)
+            if size:
+                variant_query = variant_query.filter(size=size)
+            
+            variant = variant_query.first()
+            if not variant:
+                logger.error(f"Variant not found for product {product_id} with color={color}, size={size}")
+                return Response(
+                    {"success": False, "message": "Variant not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            logger.info(f"Variant found: {variant.id}")
+
+        # Create or update cart item
+        cart_item, created = CartItem.objects.get_or_create(
+            cart=cart,
+            product=product,
+            variant=variant,
+            defaults={'quantity': quantity}
         )
-        
-        # Rest of your existing code remains the same until the cart items loop
-        
-        # Get cart items with related data
-        cart_items = CartItem.objects.filter(cart=cart).select_related(
-            'product',
-            'variant'
-        ).prefetch_related(
-            'product__category',  # Changed from select_related to prefetch_related
-            'product__category__parent'
-        )
-        
+
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+            logger.info(f"Updated cart item quantity to {cart_item.quantity}")
+
+        # Debug: Log cart items after update
+        cart_items = CartItem.objects.filter(cart=cart).select_related('product', 'variant').prefetch_related('product__category')
+        logger.info(f"Cart items after update: {cart_items.count()} items")
+        for item in cart_items:
+            logger.info(f"Cart item: {item.product.name}, Qty: {item.quantity}, Variant: {item.variant}")
+
+        # Prepare response
         items = []
         total_quantity = 0
         
@@ -308,25 +345,17 @@ def add_to_cart(request):
             variant_color = item.variant.color if item.variant else None
             variant_size = item.variant.size if item.variant else None
             
-            # Initialize category variables
+            # Get category and subcategory
             category_name = None
             subcategory_name = ""
             
-            # Get all categories for the product
-            # Inside the cart items loop, replace the category access code with:
             if hasattr(item.product, 'category') and item.product.category.exists():
-                # Get all categories for the product
                 categories = item.product.category.all().order_by('name')
-                
-                # Get the first category as main category
                 if categories:
                     main_category = categories[0]
                     category_name = main_category.name
-                    
-                    # If there's a second category, use it as subcategory
                     if len(categories) > 1:
                         subcategory_name = categories[1].name
-                    # Or if the category has a parent, use that as main category
                     elif hasattr(main_category, 'parent') and main_category.parent:
                         category_name = main_category.parent.name
                         subcategory_name = main_category.name
@@ -356,11 +385,6 @@ def add_to_cart(request):
             "cart": cart_data
         }, status=status.HTTP_200_OK)
     
-    except (Product.DoesNotExist, ProductVariant.DoesNotExist) as e:
-        return Response(
-            {"success": False, "message": "Product or variant not found."},
-            status=status.HTTP_404_NOT_FOUND
-        )
     except Exception as e:
         logger.error(f"Error in add_to_cart: {str(e)}", exc_info=True)
         return Response(
