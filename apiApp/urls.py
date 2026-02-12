@@ -10,7 +10,8 @@ from . import views
 from .views import (
     get_cart, add_to_cart, create_cart, product_list, 
     ProductDetailView, category_list, category_detail, 
-    verify_payment, product_ratings
+    verify_payment, product_ratings, resend_verification_email, 
+    VerifyEmailView 
 )
 
 app_name = 'api'  # Add this for namespacing
@@ -56,7 +57,8 @@ urlpatterns = [
         path("login/", views.login_user, name="login"),
         path("logout/", views.logout_user, name="logout"),
         path("me/", views.user_profile, name="user-profile"),
-        path("create/", views.create_user, name="create-user"),
+        path("verify-email/<str:token>/", VerifyEmailView.as_view(), name="verify-email"),
+        path("resend-verification/", resend_verification_email, name="resend-verification"),
         path('check/<str:email>/', views.check_user, name='check-user'),
         path("address/", include([
             path("", views.get_address, name="user-address"),
@@ -68,7 +70,7 @@ urlpatterns = [
             path("add/", views.add_to_wishlist, name="add-to-wishlist"),
         ])),
     ])),
-
+    
     # Ratings
     path("products/<int:product_id>/ratings/", product_ratings, name="product-ratings"),
     path("ratings/", views.RatingListCreateView.as_view(), name="rating-list"),

@@ -1,6 +1,7 @@
 from rest_framework.views import exception_handler
 from rest_framework.exceptions import PermissionDenied
 from rest_framework import status
+from django.utils import timezone
 import json
 import uuid
 import hmac
@@ -19,6 +20,9 @@ from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 from django.db.models import Avg, Count
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -29,8 +33,7 @@ from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSeria
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.shortcuts import get_object_or_404
-
+from django.urls import reverse
 
 
 def custom_exception_handler(exc, context):
@@ -921,7 +924,7 @@ def product_in_cart(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
-    """Simple user registration endpoint"""
+    """User registration with email verification"""
     data = request.data.copy()
     
     # Handle the typo in confirmPassword
@@ -932,23 +935,37 @@ def register(request):
     if data.get('role') == 'cutomer':  # Fix typo
         data['role'] = 'customer'
     
-    # Create user directly instead of calling create_user
+    # Create user but keep them inactive until email is verified
     user_serializer = UserSerializer(data=data)
     if user_serializer.is_valid():
-        user = user_serializer.save()
+        user = user_serializer.save(
+            is_active=False,  # User is inactive until verified
+            email_verified=False
+        )
         
-        # Generate auth token for the user
-        from rest_framework.authtoken.models import Token
-        token, created = Token.objects.get_or_create(user=user)
+        # Generate verification token
+        user.verification_token = str(uuid.uuid4())
+        user.verification_token_created_at = timezone.now()
+        user.save()
+        
+        # Send verification email
+        verification_url = request.build_absolute_uri(
+            reverse('api:verify-email', args=[user.verification_token])
+        )
+        
+        send_mail(
+            'Verify Your Email - Patrick Cavanni',
+            f'Please click the following link to verify your email:\n\n{verification_url}\n\n'
+            'This link will expire in 24 hours.',
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
         
         return Response({
-            'token': token.key,
-            'user_id': user.id,
+            'message': 'Registration successful! Please check your email to verify your account.',
             'email': user.email,
-            'full_name': user.full_name,
-            'role': user.user_type,        # Add this line for frontend compatibility
-            'address': [],
-            'message': 'User created successfully.'
+            'requires_verification': True
         }, status=status.HTTP_201_CREATED)
     
     return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -957,7 +974,7 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
-    """Custom login endpoint that returns token and user info"""
+    """Custom login endpoint that checks email verification"""
     email = request.data.get('email')
     password = request.data.get('password')
     
@@ -970,8 +987,26 @@ def login_user(request):
     user = authenticate(request, username=email, password=password)
     
     if user is not None:
+        # Check if email is verified
+        if not user.email_verified:
+            return Response({
+                'error': 'Please verify your email before logging in. Check your email for the verification link.',
+                'requires_verification': True,
+                'email': user.email,
+                'can_resend': True
+            }, status=status.HTTP_403_FORBIDDEN)
+            
+        # Check if account is active
+        if not user.is_active:
+            return Response({
+                'error': 'Your account is inactive. Please contact support.',
+                'is_active': False
+            }, status=status.HTTP_403_FORBIDDEN)
+            
+        # Generate token and return user data
         from rest_framework.authtoken.models import Token
         token, created = Token.objects.get_or_create(user=user)
+        
         return Response({
             'token': token.key,
             'isAuthenticated': True,
@@ -987,6 +1022,57 @@ def login_user(request):
             'error': 'Invalid credentials',
             'isAuthenticated': False
         }, status=status.HTTP_401_UNAUTHORIZED)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_verification_email(request):
+    """Resend verification email"""
+    email = request.data.get('email')
+    if not email:
+        return Response(
+            {'error': 'Email is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        user = User.objects.get(email=email)
+        
+        if user.email_verified:
+            return Response(
+                {'message': 'Email is already verified'}, 
+                status=status.HTTP_200_OK
+            )
+            
+        # Generate new token
+        user.verification_token = str(uuid.uuid4())
+        user.verification_token_created_at = timezone.now()
+        user.save()
+        
+        # Send verification email
+        verification_url = request.build_absolute_uri(
+            reverse('verify-email', args=[user.verification_token])
+        )
+        
+        send_mail(
+            'Verify Your Email - Patrick Cavanni',
+            f'Please click the following link to verify your email:\n\n{verification_url}\n\n'
+            'This link will expire in 24 hours.',
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        
+        return Response(
+            {'message': 'Verification email sent successfully'}, 
+            status=status.HTTP_200_OK
+        )
+        
+    except User.DoesNotExist:
+        # Don't reveal if email exists for security reasons
+        return Response(
+            {'message': 'If an account exists with this email, a verification link has been sent'}, 
+            status=status.HTTP_200_OK
+        )
 
  
 @api_view(['POST'])
@@ -1324,4 +1410,46 @@ def product_ratings(request, product_id):
         'rating_summary': rating_summary,
         'reviews': serializer.data
     })
+
+
+class VerifyEmailView(APIView):
+    """
+    Verify user's email using the verification token.
+    """
+    permission_classes = [AllowAny]
     
+    def get(self, request, token):
+        try:
+            user = User.objects.get(verification_token=token)
+            
+            # Check if token is expired (24 hours)
+            token_age = timezone.now() - user.verification_token_created_at
+            if token_age > timezone.timedelta(hours=24):
+                return Response(
+                    {"error": _("Verification link has expired. Please request a new one.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Mark email as verified and activate the account
+            user.email_verified = True
+            user.is_active = True
+            user.verification_token = None
+            user.verification_token_created_at = None
+            user.save()
+            
+            return Response(
+                {"message": _("Email verified successfully! You can now log in.")},
+                status=status.HTTP_200_OK
+            )
+            
+        except User.DoesNotExist:
+            return Response(
+                {"error": _("Invalid verification link.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error verifying email: {str(e)}")
+            return Response(
+                {"error": _("An error occurred while verifying your email.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

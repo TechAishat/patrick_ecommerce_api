@@ -40,6 +40,11 @@ class CustomUser(AbstractUser):
     profile_picture_url = models.URLField(blank=True, null=True)
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='customer')
     
+    # Email verification fields
+    email_verified = models.BooleanField(default=False)
+    verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)
+    verification_token_created_at = models.DateTimeField(null=True, blank=True)
+    
     objects = CustomUserManager()
     
     USERNAME_FIELD = 'email'
