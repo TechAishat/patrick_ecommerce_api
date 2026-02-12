@@ -21,7 +21,7 @@ from django.conf.urls.static import static
 from blog.admin import blog_admin_site
 from rest_framework.authtoken.views import obtain_auth_token
 from django.views.generic import RedirectView
-
+from django.urls import re_path
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -38,6 +38,7 @@ schema_view = get_schema_view(
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
+    url='https://aishat.pythonanywhere.com',  # Add this line
 )
 
 urlpatterns = [
@@ -58,9 +59,15 @@ urlpatterns = [
     # Add this line to redirect root URL to your main page
     path('', RedirectView.as_view(url='/api/', permanent=False)),
 
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-    path('swagger.json', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', 
+           schema_view.without_ui(cache_timeout=0), 
+           name='schema-json'),
+    path('swagger/', 
+         schema_view.with_ui('swagger', cache_timeout=0), 
+         name='schema-swagger-ui'),
+    path('redoc/', 
+         schema_view.with_ui('redoc', cache_timeout=0), 
+         name='schema-redoc'),
 ]
 
 # This is only needed during development
