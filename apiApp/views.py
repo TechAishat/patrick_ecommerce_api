@@ -1,5 +1,8 @@
 from rest_framework.views import exception_handler
 from rest_framework.exceptions import PermissionDenied
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework import status
 from django.utils import timezone
 import json
@@ -1571,3 +1574,35 @@ class PasswordResetConfirmView(APIView):
                 {"error": "Invalid reset link"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class GoogleAuthURL(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, *args, **kwargs):
+        from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+        from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+        from urllib.parse import urlencode
+        from django.conf import settings
+
+        # Get the client ID and secret from settings
+        client_id = settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['client_id']
+        client_secret = settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['secret']
+        
+        # Build the authorization URL
+        params = {
+            'client_id': client_id,
+            'redirect_uri': f"{settings.FRONTEND_URL}/google/callback",
+            'scope': 'openid profile email',
+            'response_type': 'code',
+            'access_type': 'offline',
+            'prompt': 'select_account',
+        }
+        
+        url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+        return Response({'authorization_url': url}, status=200)
+
+class GoogleLogin(SocialLoginView):
+    permission_classes = [AllowAny]
+    adapter_class = GoogleOAuth2Adapter
+    callback_url = 'postmessage'
+    client_class = OAuth2Client

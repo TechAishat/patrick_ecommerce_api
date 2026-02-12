@@ -33,6 +33,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
+    'dj_rest_auth.registration',
+    'dj_rest_auth',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
@@ -216,7 +218,6 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Allauth configuration
-# Allauth configuration
 ACCOUNT_LOGIN_METHODS = ['email']  # Only allow email login
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']  # Required field
 ACCOUNT_UNIQUE_EMAIL = True
@@ -252,11 +253,11 @@ SOCIALACCOUNT_PROVIDERS = {
             'access_type': 'online',
             'prompt': 'select_account',
         },
-       # 'APP': {
-        #    'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', 'YOUR_ACTUAL_GOOGLE_CLIENT_ID') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_CLIENT_ID',
-         #   'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', 'YOUR_ACTUAL_GOOGLE_SECRET') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_SECRET',
-          #  'key': ''
-        #}
+        'APP': {
+            'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID', 'YOUR_ACTUAL_GOOGLE_CLIENT_ID') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_CLIENT_ID',
+            'secret': os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', 'YOUR_ACTUAL_GOOGLE_SECRET') if not IS_PYTHONANYWHERE else 'YOUR_ACTUAL_GOOGLE_SECRET',
+            'key': ''
+        }
     }
 }
 
@@ -370,3 +371,21 @@ SWAGGER_SETTINGS = {
     'REFETCH_SCHEMA_WITH_AUTH': True,
     'REFETCH_SCHEMA_ON_LOGOUT': True
 }
+
+
+# REST Auth settings
+REST_AUTH = {
+    'USE_JWT': False,
+    'TOKEN_MODEL': 'rest_framework.authtoken.models.Token',
+    'TOKEN_SERIALIZER': 'dj_rest_auth.serializers.TokenSerializer',
+    'JWT_AUTH_COOKIE': None,
+    'JWT_AUTH_REFRESH_COOKIE': None,
+    'JWT_AUTH_HTTPONLY': False,
+    'USER_DETAILS_SERIALIZER': 'apiApp.serializers.UserSerializer',
+    'PASSWORD_RESET_SERIALIZER': 'dj_rest_auth.serializers.PasswordResetSerializer',
+    'PASSWORD_RESET_CONFIRM_SERIALIZER': 'dj_rest_auth.serializers.PasswordResetConfirmSerializer',
+    'PASSWORD_CHANGE_SERIALIZER': 'dj_rest_auth.serializers.PasswordChangeSerializer',
+    'LOGIN_SERIALIZER': 'dj_rest_auth.serializers.LoginSerializer',
+    'REGISTER_SERIALIZER': 'apiApp.serializers.CustomRegisterSerializer',
+}
+

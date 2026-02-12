@@ -1,3 +1,4 @@
+from dj_rest_auth.registration.serializers import RegisterSerializer
 from rest_framework import serializers 
 from django.contrib.auth import get_user_model
 from .models import (
@@ -26,6 +27,26 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         return CustomerAddress.objects.create(customer=user, **validated_data)
 
+class CustomRegisterSerializer(RegisterSerializer):
+    """
+    Custom registration serializer that adds first_name and last_name fields.
+    """
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+ 
+    def get_cleaned_data(self):
+        data_dict = super().get_cleaned_data()
+        data_dict['first_name'] = self.validated_data.get('first_name', '')
+        data_dict['last_name'] = self.validated_data.get('last_name', '')
+        return data_dict
+ 
+    def save(self, request):
+        user = super().save(request)
+        user.first_name = self.validated_data.get('first_name', '')
+        user.last_name = self.validated_data.get('last_name', '')
+        user.save()
+        return user
+
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
  
@@ -33,7 +54,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ["id", "email", "full_name", "profile_picture_url", "password"]  # Remove username, first_name, last_name
         ref_name = 'apiApp_User'
-        
+
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():

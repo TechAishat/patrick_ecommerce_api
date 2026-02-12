@@ -11,7 +11,7 @@ from .views import (
     get_cart, add_to_cart, create_cart, product_list, 
     ProductDetailView, category_list, category_detail, 
     verify_payment, product_ratings, resend_verification_email, 
-    VerifyEmailView 
+    VerifyEmailView, GoogleAuthURL, GoogleLogin
 )
 
 app_name = 'api'  # Add this for namespacing
@@ -70,6 +70,9 @@ urlpatterns = [
             path("", views.PasswordResetRequestView.as_view(), name="password-reset-request"),
             path("confirm/<uidb64>/<token>/", views.PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
         ])),
+
+        path('google/', GoogleAuthURL.as_view(), name='google_auth'),
+        path('google/callback/', GoogleLogin.as_view(), name='google_callback'),
         
         path("wishlist/", include([
             path("", views.my_wishlists, name="wishlist"),
