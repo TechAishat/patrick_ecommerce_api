@@ -9,6 +9,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name']
         read_only_fields = ['id', 'username', 'email', 'first_name', 'last_name']
+        ref_name = 'blog_User' 
 
 
 class CategorySerializer(serializers.ModelSerializer):

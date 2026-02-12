@@ -32,7 +32,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "email", "full_name", "profile_picture_url", "password"]  # Remove username, first_name, last_name
-    
+        ref_name = 'apiApp_User'
+        
+
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise ValidationError("This email is already in use.")

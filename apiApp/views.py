@@ -1324,5 +1324,4 @@ def product_ratings(request, product_id):
         'rating_summary': rating_summary,
         'reviews': serializer.data
     })
-
-
+    

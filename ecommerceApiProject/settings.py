@@ -38,6 +38,9 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'django_filters',
+    'import_export',
+    'rangefilter',
+    'drf_yasg',
     
     # Local apps
     'apiApp',
@@ -331,3 +334,34 @@ ROOT_URLCONF = 'ecommerceApiProject.urls'  # Make sure this matches your project
 
 # Login URLs
 LOGIN_URL = '/accounts/login/'
+
+
+# Add these settings at the bottom of your settings.py
+SWAGGER_SETTINGS = {
+    'DEFAULT_FIELD_INSPECTORS': [
+        'drf_yasg.inspectors.CamelCaseJSONFilter',
+        'drf_yasg.inspectors.ReferencingSerializerInspector',
+        'drf_yasg.inspectors.RelatedFieldInspector',
+        'drf_yasg.inspectors.ChoiceFieldInspector',
+        'drf_yasg.inspectors.FileFieldInspector',
+        'drf_yasg.inspectors.DictFieldInspector',
+        'drf_yasg.inspectors.JSONFieldInspector',
+        'drf_yasg.inspectors.SerializerMethodFieldInspector',
+        'drf_yasg.inspectors.SimpleFieldInspector',
+        'drf_yasg.inspectors.StringDefaultFieldInspector',
+    ],
+    'DEFAULT_PAGINATOR_INSPECTORS': [
+        'drf_yasg.inspectors.CoreAPICompatInspector',
+    ],
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header'
+        }
+    },
+    'USE_SESSION_AUTH': False,
+    'JSON_EDITOR': True,
+    'REFETCH_SCHEMA_WITH_AUTH': True,
+    'REFETCH_SCHEMA_ON_LOGOUT': True
+}
