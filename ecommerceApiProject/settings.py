@@ -220,7 +220,7 @@ AUTHENTICATION_BACKENDS = [
 ACCOUNT_LOGIN_METHODS = ['email']  # Only allow email login
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']  # Required field
 ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_EMAIL_VERIFICATION = 'none'
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
@@ -238,7 +238,7 @@ ACCOUNT_FORMS = {
 SOCIALACCOUNT_ADAPTER = 'apiApp.social_adapters.CustomSocialAccountAdapter'
 
 # Social Account Settings 
-SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_STORE_TOKENS = True
@@ -259,6 +259,9 @@ SOCIALACCOUNT_PROVIDERS = {
         #}
     }
 }
+
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
 
 # Paystack settings
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
@@ -319,13 +322,16 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = IS_PYTHONANYWHERE
 SECURE_HSTS_PRELOAD = IS_PYTHONANYWHERE
 
 # Email settings
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = os.getenv('EMAIL_HOST_USER')
+if DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = os.getenv('EMAIL_HOST_USER')
 
 
 ROOT_URLCONF = 'ecommerceApiProject.urls'  # Make sure this matches your project name

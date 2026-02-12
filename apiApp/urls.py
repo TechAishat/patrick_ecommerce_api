@@ -64,6 +64,13 @@ urlpatterns = [
             path("", views.get_address, name="user-address"),
             path("add/", views.add_address, name="add-address"),
         ])),
+
+        # Password Reset
+        path("password-reset/", include([
+            path("", views.PasswordResetRequestView.as_view(), name="password-reset-request"),
+            path("confirm/<uidb64>/<token>/", views.PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
+        ])),
+        
         path("wishlist/", include([
             path("", views.my_wishlists, name="wishlist"),
             path("check/", views.product_in_wishlist, name="check-wishlist"),

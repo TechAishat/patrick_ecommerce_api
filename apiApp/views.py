@@ -1453,3 +1453,121 @@ class VerifyEmailView(APIView):
                 {"error": _("An error occurred while verifying your email.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response(
+                {"error": "Email is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            # Don't reveal if user doesn't exist for security
+            return Response(
+                {"message": "If an account exists with this email, a password reset link has been sent."},
+                status=status.HTTP_200_OK
+            )
+            
+        # Generate password reset token
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Build reset URL
+        # In views.py, update the reset_url in PasswordResetRequestView
+        reset_url = request.build_absolute_uri(
+            reverse('api:password-reset-confirm', kwargs={
+                'uidb64': uid,
+                'token': token
+            })
+        ).replace('/api/password-reset-confirm/', '/api/users/password-reset/confirm/')
+        
+        # Send email
+        subject = "Password Reset Request"
+        message = f"""
+        You're receiving this email because you requested a password reset for your account.
+        
+        Please go to the following page and choose a new password:
+        {reset_url}
+        
+        If you didn't request this, please ignore this email.
+        """
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        
+        return Response(
+            {"message": "Password reset email has been sent if the email exists in our system."},
+            status=status.HTTP_200_OK
+        )
+ 
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, uidb64, token):
+        # This handles the GET request when user clicks the reset link
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            
+            if not default_token_generator.check_token(user, token):
+                return Response(
+                    {"error": "Invalid or expired reset link"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            return Response({
+                "uid": uidb64,
+                "token": token,
+                "email": user.email
+            })
+            
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {"error": "Invalid reset link"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def post(self, request, uidb64, token):
+        # This handles the password reset form submission
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            
+            if not default_token_generator.check_token(user, token):
+                return Response(
+                    {"error": "Invalid or expired reset link"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate password
+            password = request.data.get('password')
+            if not password:
+                return Response(
+                    {"error": "Password is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            # Set new password
+            user.set_password(password)
+            user.save()
+            
+            return Response({
+                "message": "Password has been reset successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {"error": "Invalid reset link"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
