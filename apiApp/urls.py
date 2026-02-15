@@ -33,9 +33,7 @@ urlpatterns = [
     # Cart
     path("cart/", include([
         path("", get_cart, name="cart-detail"),
-        path("create/", create_cart, name="create-cart"),
         path("add/", add_to_cart, name="add-to-cart"),
-        path("<str:cart_code>/", get_cart, name="cart-detail-code"),
     ])),
     
     # Reviews
@@ -80,6 +78,8 @@ urlpatterns = [
             path("add/", views.add_to_wishlist, name="add-to-wishlist"),
         ])),
     ])),
+
+    path('test-email/', views.test_email, name='test-email'),    
     
     # Ratings
     path("products/<int:product_id>/ratings/", product_ratings, name="product-ratings"),

@@ -31,12 +31,15 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import Http404
+from .paystack import Paystack  # Add this import at the top with other imports
 from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle, ProductVariant
 from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer, CartStatSerializer
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
+import time
+
 
 
 def custom_exception_handler(exc, context):
@@ -516,57 +519,83 @@ def product_search(request):
     serializer = ProductListSerializer(products, many=True)
     return Response(serializer.data)
 
+
+
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_checkout_session(request):
-    """Create a Paystack checkout session."""
-    cart_code = request.data.get("cart_code")
-    email = request.data.get("email")
-    
-    if not cart_code or not email:
-        return Response({'error': 'Both cart_code and email are required.'}, status=400)
-
-    cart = get_object_or_404(Cart, cart_code=cart_code)
-
-    total_amount = sum(int(item.product.price * 100) * item.quantity for item in cart.cartitems.all())  # Amount in Kobo
-
-    payload = {
-    'email': email,
-    'amount': total_amount,
-    'currency': 'NGN',
-    'reference': str(uuid.uuid4()),
-    'metadata': {'cart_code': cart_code},
-    'callback_url': 'https://aishat.pythonanywhere.com/api/webhook/',
-    'success_url': 'https://patrick-cavannii.netlify.app/payment/success/',
-    'cancel_url': 'https://patrick-cavannii.netlify.app/payment/failed/',}
-
-    response_data = call_paystack_api('transaction/initialize', payload)
-
-    if response_data.get('status'):
-        return Response({'authorization_url': response_data['data']['authorization_url']}, status=200)
-
-    logger.error(f"Error from Paystack: {response_data.get('message', 'Unknown error.')}")
-    return Response({'error': response_data.get('message', 'Payment initiation failed.')}, status=400)
-
-def call_paystack_api(endpoint, payload):
-    headers = {
-        'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}', 
-        'Content-Type': 'application/json',
-    }
-
+    """Create a Paystack checkout session using the authenticated user's cart."""
     try:
-        response = requests.post(f'https://api.paystack.co/{endpoint}', json=payload, headers=headers)
-        logger.debug(f"Response status: {response.status_code}, Response body: {response.text}")
+        # Get the user's most recent cart
+        try:
+            cart = Cart.objects.filter(user=request.user).latest('created_at')
+            
+            # Check if this cart is already associated with an order
+            cart_product_ids = cart.cartitems.values_list('product_id', flat=True)
+            if OrderItem.objects.filter(product_id__in=cart_product_ids).exists():
+                return Response(
+                    {"error": "This cart has already been processed. Please add items to a new cart."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Cart.DoesNotExist:
+            return Response(
+                {"error": "No active cart found. Please add items to your cart first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+ 
+        if cart.cartitems.count() == 0:
+            return Response(
+                {"error": "Your cart is empty. Please add items before checking out."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if response.status_code != 200:
-            logger.error(f"Error from Paystack: {response.status_code}, Response: {response.text}")
-            return {}
+        # Calculate total amount in kobo
+        total_amount = int(sum(
+            item.quantity * float(item.product.price) * 100  # Convert to kobo
+            for item in cart.cartitems.all()
+        ))
 
-        return response.json()
-    
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request failed: {e}")
-        return {}
+        # Prepare Paystack payload
+        payload = {
+            'email': request.user.email,
+            'amount': total_amount,
+            'reference': f"order_{cart.id}_{int(time.time())}",
+            'callback_url': f"{settings.FRONTEND_URL}/payment/verify/",  # Your frontend callback URL
+            'metadata': {
+                'cart_id': str(cart.id),
+                'user_id': str(request.user.id),
+                'cart_code': str(cart.cart_code)  # Add cart_code to metadata
+            }
+        }
 
+        # Initialize Paystack payment
+        paystack = Paystack()
+        response = paystack.initialize_transaction(**payload)
+
+        if not response.get('status'):
+            logger.error(f"Paystack error: {response.get('message', 'Unknown error')}")
+            return Response(
+                {"error": "Failed to initialize payment. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Return the authorization URL to the frontend
+        return Response({
+            "authorization_url": response['data']['authorization_url'],
+            "reference": payload['reference'],
+            "amount": total_amount,
+            "email": request.user.email
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Checkout error: {str(e)}", exc_info=True)
+        return Response(
+            {"error": "An error occurred while processing your payment. Please try again."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+        
 @csrf_exempt
 @api_view(['GET', 'POST'])  # Allow both GET and POST
 @permission_classes([AllowAny])
@@ -629,11 +658,11 @@ def verify_paystack_webhook(payload, signature):
     ).hexdigest()
     return hmac.compare_digest(hash, signature)
 
-def fulfill_checkout(session, cart_code):
+def fulfill_checkout(session_data, cart_code):
     """Fulfill the order after successful payment."""
     try:
         # Check if order with this reference already exists
-        reference = session.get('reference')
+        reference = session_data.get('reference')
         if not reference:
             logger.error("No reference found in session")
             return False
@@ -643,14 +672,21 @@ def fulfill_checkout(session, cart_code):
             return True
 
         # Get the cart
-        cart = Cart.objects.get(cart_code=cart_code)
+        try:
+            cart = Cart.objects.get(cart_code=cart_code)
+        except Cart.DoesNotExist:
+            logger.error(f"Cart with code {cart_code} not found")
+            return False
+
+        # Get customer email from session data
+        customer_email = session_data.get('customer', {}).get('email', '') or session_data.get('customer_email', '')
         
         # Create order
         order = Order.objects.create(
             paystack_checkout_id=reference,
-            amount=float(session.get('amount', 0)) / 100,  # Convert from kobo to Naira
-            currency=session.get('currency', 'NGN'),
-            customer_email=session.get('customer', {}).get('email', ''),
+            amount=float(session_data.get('amount', 0)) / 100,  # Convert from kobo to Naira
+            currency=session_data.get('currency', 'NGN'),
+            customer_email=customer_email,
             status='Paid'
         )
         
@@ -659,7 +695,8 @@ def fulfill_checkout(session, cart_code):
             OrderItem.objects.create(
                 order=order,
                 product=item.product,
-                quantity=item.quantity
+                quantity=item.quantity,
+                price=item.product.price  # Store the price at time of purchase
             )
             
         # Clear the cart
@@ -672,66 +709,58 @@ def fulfill_checkout(session, cart_code):
         logger.error(f"Error fulfilling checkout: {str(e)}", exc_info=True)
         return False
 
+
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([AllowAny])  # Add this back if you want to allow unauthenticated access
 def verify_payment(request):
-    """Handle Paystack payment verification callback."""
     reference = request.query_params.get('reference')
-    
     if not reference:
-        return Response(
-            {"status": "error", "message": "No reference provided"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'error': 'Reference is required'}, status=400)
     
-    # Verify the transaction with Paystack
-    verify_url = f"https://api.paystack.co/transaction/verify/{reference}"
-    headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
-        "Content-Type": "application/json",
-    }
+    paystack = Paystack()
+    response = paystack.verify_transaction(reference)
     
-    try:
-        response = requests.get(verify_url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data['status'] and data['data']['status'] == 'success':
-            # Handle successful payment
-            cart_code = data['data']['metadata'].get('cart_code')
-            if cart_code:
-                fulfill_checkout(data['data'], cart_code)
+    if response.get('status') is False:
+        return Response(response, status=400)
+    
+    data = response.get('data', {})
+    status = data.get('status')
+    metadata = data.get('metadata', {})
+    cart_code = metadata.get('cart_code')
+    
+    if status == 'success':
+        # Handle successful payment
+        if cart_code and fulfill_checkout(data, cart_code):
+            return Response({
+                'status': 'success',
+                'message': 'Payment verified and order created successfully',
+                'data': {
+                    'reference': reference,
+                    'amount': data.get('amount', 0) / 100,  # Convert from kobo to Naira
+                    'currency': data.get('currency', 'NGN'),
+                    'paid_at': data.get('paid_at'),
+                    'status': status
+                }
+            })
+        else:
+            return Response({
+                'status': 'error',
+                'message': 'Payment verified but failed to create order',
+                'data': data
+            }, status=400)
             
-            return Response(
-                {
-                    "status": "success",
-                    "message": "Payment verified successfully",
-                    "data": {
-                        "reference": reference,
-                        "amount": data['data']['amount'] / 100,  # Convert from kobo to Naira
-                        "currency": data['data']['currency'],
-                        "paid_at": data['data']['paid_at'],
-                        "status": data['data']['status']
-                    }
-                },
-                status=status.HTTP_200_OK
-            )
-        
-        return Response(
-            {
-                "status": "failed",
-                "message": data.get('message', 'Payment verification failed'),
-                "data": data.get('data')
-            },
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    except requests.RequestException as e:
-        logger.error(f"Error verifying payment: {str(e)}")
-        return Response(
-            {"status": "error", "message": "Failed to verify payment"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    elif status == 'abandoned':
+        return Response({
+            'status': 'pending',
+            'message': 'Payment was not completed. Please try again.',
+            'data': data
+        }, status=200)
+    else:
+        return Response({
+            'status': 'failed',
+            'message': data.get('gateway_response', 'Payment verification failed'),
+            'data': data
+        }, status=400)
 
 
 # Newly Added 
@@ -951,18 +980,26 @@ def register(request):
         user.verification_token_created_at = timezone.now()
         user.save()
         
-        # Send verification email
-        verification_url = request.build_absolute_uri(
-            reverse('api:verify-email', args=[user.verification_token])
-        )
+        # Build frontend verification URL with token
+        frontend_url = f"http://localhost:5173/verify-email?token={user.verification_token}"
         
+        # Send verification email with frontend URL
         send_mail(
             'Verify Your Email - Patrick Cavanni',
-            f'Please click the following link to verify your email:\n\n{verification_url}\n\n'
+            f'Please click the following link to verify your email:\n\n{frontend_url}\n\n'
             'This link will expire in 24 hours.',
             settings.DEFAULT_FROM_EMAIL,
             [user.email],
             fail_silently=False,
+            html_message=(
+                f'<p>Please click the button below to verify your email:</p>'
+                f'<a href="{frontend_url}" style="background-color: #4CAF50; border: none; color: white; '
+                f'padding: 15px 32px; text-align: center; text-decoration: none; display: inline-block; '
+                f'font-size: 16px; margin: 4px 2px; cursor: pointer; border-radius: 4px;">'
+                f'Verify Email</a>'
+                f'<p>Or copy and paste this link in your browser:<br>{frontend_url}</p>'
+                f'<p>This link will expire in 24 hours.</p>'
+            )
         )
         
         return Response({
@@ -972,6 +1009,19 @@ def register(request):
         }, status=status.HTTP_201_CREATED)
     
     return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+ 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def test_email(request):
+    send_mail(
+        'Test Email from Patrick Cavanni',
+        'This is a test email from Django backend.',
+        settings.DEFAULT_FROM_EMAIL,  # Use the email from settings
+        ['curvemetric122@gmail.com'],  # Your email address
+        fail_silently=False,
+    )
+    return Response({"message": "Test email sent to curvemetric122@gmail.com"})
 
 
 @api_view(['POST'])

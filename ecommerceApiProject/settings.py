@@ -14,10 +14,23 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Security settings
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-')  # Use environment variable in production
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-')  # Keep this line
+DEBUG = os.getenv('DEBUG', 'False') == 'True'  # Add this line
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # Add this line
+USE_X_FORWARDED_HOST = True  # Add this line
+USE_X_FORWARDED_PORT = True  # Add this line
 
 # Environment detection
 IS_PYTHONANYWHERE = 'PYTHONANYWHERE_DOMAIN' in os.environ
+
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'aishat.pythonanywhere.com',
+    'www.aishat.pythonanywhere.com',
+    'patrick-cavannii.netlify.app',
+    'www.patrick-cavannii.netlify.app'
+]
 
 # Application definition
 INSTALLED_APPS = [
@@ -274,21 +287,24 @@ FRONTEND_URL = "https://patrick-cavannii.netlify.app" if IS_PYTHONANYWHERE else 
 
 
 # CORS settings
-if not IS_PYTHONANYWHERE:
-    # Development - allow all origins
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    # Production - only allow specific origins
-    CORS_ALLOWED_ORIGINS = [
-        "https://patrick-cavannii.netlify.app",
-        "https://www.patrick-cavannii.netlify.app",
-        "https://aishat.pythonanywhere.com",
-        "https://www.aishat.pythonanywhere.com",
-        "http://localhost:5173",  # Add this for local development
-        "http://localhost:3000",  # Keep this too
-    ]
-
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://patrick-cavannii.netlify.app",
+    "https://www.patrick-cavannii.netlify.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+
+# Add these headers to allow all necessary methods and headers
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -302,22 +318,21 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Security settings for production
-CSRF_TRUSTED_ORIGINS = [
-    'https://aishat.pythonanywhere.com',
-    'https://www.aishat.pythonanywhere.com',
-    'https://patrick-cavannii.netlify.app',
-    'https://www.patrick-cavannii.netlify.app',
-    'http://localhost:5173',  # Add this for local development
-    'http://localhost:3000',  # Keep this too
-]
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+
+# Session and CSRF cookie settings
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 
 # Security settings
 SECURE_SSL_REDIRECT = IS_PYTHONANYWHERE
 SESSION_COOKIE_SECURE = IS_PYTHONANYWHERE
 CSRF_COOKIE_SECURE = IS_PYTHONANYWHERE
-CSRF_COOKIE_SAMESITE = 'Lax' if not IS_PYTHONANYWHERE else 'None'
-SESSION_COOKIE_SAMESITE = 'Lax' if not IS_PYTHONANYWHERE else 'None'
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 SECURE_HSTS_SECONDS = 31536000 if IS_PYTHONANYWHERE else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = IS_PYTHONANYWHERE
 SECURE_HSTS_PRELOAD = IS_PYTHONANYWHERE
