@@ -160,11 +160,13 @@ class Command(BaseCommand):
                 size=variant_data['size'],
                 defaults={
                     'quantity': variant_data['quantity'],
-                    'sku': variant_data['sku']
+                    # Removed 'sku' field from here
                 }
             )
             action = 'Created' if created else 'Updated'
             self.stdout.write(f"  {action} variant: {variant.color} {variant.size}")
+
+
 
         # Download and save images
         for i, image_url in enumerate(product_data['images']):

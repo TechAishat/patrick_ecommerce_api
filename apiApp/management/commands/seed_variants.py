@@ -17,7 +17,7 @@ class Command(BaseCommand):
             
             # Skip if product already has variants
             if product.variants.exists():
-                self.stdout.write(f"  - Product already has variants, skipping...")
+                self.stdout.write("  - Product already has variants, skipping...")
                 continue
             
             # Get up to 3 random colors for this product
@@ -29,11 +29,9 @@ class Command(BaseCommand):
             # Create variants
             for color in product_colors:
                 for size in product.sizes:
-                    # Create variant
-                    sku = f"{product.sku_base or 'SKU'}-{color[:3].upper()}-{size}"
+                    # Create variant without sku
                     variant = ProductVariant.objects.create(
                         product=product,
-                        sku=sku,
                         color=color,
                         size=size,
                         quantity=random.randint(5, 100),
