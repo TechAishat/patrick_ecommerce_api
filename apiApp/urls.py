@@ -11,7 +11,7 @@ from .views import (
     get_cart, add_to_cart, create_cart, product_list, 
     ProductDetailView, category_list, category_detail, 
     verify_payment, product_ratings, resend_verification_email, 
-    VerifyEmailView, GoogleAuthURL, GoogleLogin
+    VerifyEmailView, GoogleAuthURL, GoogleLogin, ProductVariantView,
 )
 
 app_name = 'api'  # Add this for namespacing
@@ -25,6 +25,8 @@ urlpatterns = [
     # Products
     path('products/', product_list, name='product-list'),
     path('products/<slug:slug>/', ProductDetailView.as_view(), name='product-detail'),
+    path('products/<slug:product_slug>/variants/', ProductVariantView.as_view(), name='product-variants'),
+    
     
     # Categories
     path("categories/", category_list, name="category-list"),

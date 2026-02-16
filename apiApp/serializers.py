@@ -215,26 +215,43 @@ class ProductRatingSerializer(serializers.ModelSerializer):
 
 class ProductDetailSerializer(ProductListSerializer):
     variants = serializers.SerializerMethodField()
+    available_colors = serializers.SerializerMethodField()
+    available_sizes = serializers.SerializerMethodField()
     reviewStats = serializers.SerializerMethodField()
     
     class Meta(ProductListSerializer.Meta):
-        fields = ProductListSerializer.Meta.fields + ['variants', 'reviewStats']
+        fields = ProductListSerializer.Meta.fields + [
+            'variants', 
+            'available_colors',
+            'available_sizes',
+            'reviewStats',
+            'description'
+        ]
     
     def get_variants(self, obj):
+        request = self.context.get('request')
         variants = obj.variants.all()
-        return [{
-            'id': variant.id,
-            'color': variant.color,
-            'size': variant.size,
-            'quantity': variant.quantity,
-            'price': float(variant.price),  # Convert Decimal to float for JSON
-            'images': [
-                self.context['request'].build_absolute_uri(img.image.url)
-                for img in variant.images.all()
-                if img.image and hasattr(img.image, 'url')
-            ]
-        } for variant in variants]
- 
+        
+        # Filter out variants for exclusive products if user is not authenticated
+        if obj.is_exclusive and not (request and request.user.is_authenticated):
+            return []
+            
+        return ProductVariantSerializer(
+            variants,
+            many=True,
+            context=self.context
+        ).data
+
+    def get_available_colors(self, obj):
+        if obj.is_exclusive and not self.context.get('request').user.is_authenticated:
+            return []
+        return obj.colors or []
+
+    def get_available_sizes(self, obj):
+        if obj.is_exclusive and not self.context.get('request').user.is_authenticated:
+            return []
+        return obj.sizes or []
+
     def get_reviewStats(self, obj):
         reviews = Review.objects.filter(product=obj)
         rating_avg = reviews.aggregate(Avg('rating'))['rating__avg'] or 0
@@ -263,6 +280,31 @@ class ProductImageSerializer(serializers.ModelSerializer):
         if obj.image and hasattr(obj.image, 'url'):
             return self.context['request'].build_absolute_uri(obj.image.url)
         return ""
+
+# serializers.py
+class ProductVariantSerializer(serializers.ModelSerializer):
+    price = serializers.SerializerMethodField()
+    in_stock = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductVariant
+        fields = ['id', 'color', 'size', 'quantity', 'price', 'in_stock', 'images']
+
+    def get_price(self, obj):
+        return obj.price
+
+    def get_in_stock(self, obj):
+        return obj.quantity > 0
+
+    def get_images(self, obj):
+        request = self.context.get('request')
+        images = obj.images.all()
+        return [
+            request.build_absolute_uri(img.image.url) 
+            for img in images 
+            if img and hasattr(img, 'image') and img.image
+        ] if request else []
 
 
 class CartItemSerializer(serializers.ModelSerializer):

@@ -110,7 +110,6 @@ class Product(models.Model):
 
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True, blank=True)
-    sku_base = models.CharField(max_length=50, blank=True, null=True)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     old_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -130,6 +129,8 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        is_new = self._state.adding  # Check if this is a new object
+        
         if not self.slug:
             self.slug = slugify(self.name)
             unique_slug = self.slug
@@ -144,6 +145,35 @@ class Product(models.Model):
             self.discount = round(discount)
         
         super().save(*args, **kwargs)
+        
+        # Update variant attributes after saving
+        if is_new and not hasattr(self, '_dont_update_variants'):
+            self.update_variant_attributes()
+
+    def update_variant_attributes(self):
+        """Update the colors and sizes JSON fields based on variants"""
+        variants = self.variants.all()
+        self.colors = list(set(v.color.lower() for v in variants if v.color))
+        self.sizes = list(set(v.size.upper() for v in variants if v.size))
+        self.save(update_fields=['colors', 'sizes'])
+
+    def get_available_variants(self, color=None, size=None):
+        """Get available variants with optional filtering"""
+        variants = self.variants.filter(quantity__gt=0)
+        if color:
+            variants = variants.filter(color__iexact(color))
+        if size:
+            variants = variants.filter(size__iexact=size.upper())
+        return variants
+
+    def get_variant(self, color=None, size=None):
+        """Get a specific variant by color and size"""
+        if not color and not size:
+            return self.variants.first()
+        return self.variants.filter(
+            color__iexact(color) if color else None,
+            size__iexact=size.upper() if size else None
+        ).first()
 
     @property
     def discount_percentage(self):
@@ -151,14 +181,14 @@ class Product(models.Model):
     
     @property
     def is_in_stock(self):
-        return any(variant['quantity'] > 0 for variant in self.variants.all().values('quantity'))
+        return any(variant.quantity > 0 for variant in self.variants.all())
 
     def __str__(self):
         return self.name
 
+
 class ProductVariant(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
-    sku = models.CharField(max_length=100, unique=True)
     color = models.CharField(max_length=50)
     size = models.CharField(max_length=20)
     quantity = models.PositiveIntegerField(default=0)
@@ -169,10 +199,16 @@ class ProductVariant(models.Model):
 
     @property
     def price(self):
-        return self.price_override or self.product.price
+        return float(self.price_override) if self.price_override else float(self.product.price)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Update product's colors and sizes
+        self.product.update_variant_attributes()
 
     def __str__(self):
-        return f"{self.product.name} - {self.color} - {self.size}"
+        return f"{self.product.name} - {self.color or 'N/A'} - {self.size or 'N/A'}"
+
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')

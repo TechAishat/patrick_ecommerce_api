@@ -28,12 +28,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import Http404
 from .paystack import Paystack  # Add this import at the top with other imports
 from .models import Cart, CartItem, Category, CustomerAddress, Order, OrderItem, Product, Review, Wishlist, Notification, ContactMessage, HelpCenterArticle, ProductVariant
-from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer, CartStatSerializer
+from .serializers import CartItemSerializer, CartSerializer, CategoryDetailSerializer, CategoryListSerializer, CustomerAddressSerializer, OrderSerializer, ProductListSerializer, ProductDetailSerializer, ReviewSerializer, SimpleCartSerializer, UserSerializer, WishlistSerializer,NotificationSerializer, ContactMessageSerializer, HelpCenterArticleSerializer, CartStatSerializer, ProductVariantSerializer
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -1656,3 +1656,83 @@ class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     callback_url = 'postmessage'
     client_class = OAuth2Client
+
+
+class ProductVariantView(APIView):
+    """
+    API endpoint for managing product variants.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get(self, request, product_slug):
+        """
+        Get all variants for a product with optional filtering by color and size.
+        """
+        try:
+            product = get_object_or_404(Product, slug=product_slug)
+            
+            # Check if user can view this product
+            if product.is_exclusive and not request.user.is_authenticated:
+                raise PermissionDenied({
+                    "detail": "Authentication required to view this product's variants",
+                    "code": "authentication_required",
+                    "requires_login": True
+                })
+            
+            # Get query parameters
+            color = request.query_params.get('color')
+            size = request.query_params.get('size')
+            
+            # Filter variants
+            variants = product.variants.all()
+            if color:
+                variants = variants.filter(color__iexact=color)
+            if size:
+                variants = variants.filter(size__iexact=size.upper())
+            
+            # Serialize the variants
+            serializer = ProductVariantSerializer(
+                variants, 
+                many=True,
+                context={'request': request}
+            )
+            
+            return Response({
+                'product_id': product.id,
+                'product_name': product.name,
+                'variants': serializer.data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching variants: {str(e)}")
+            return Response(
+                {"error": "An error occurred while fetching variants"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def post(self, request, product_slug):
+        """
+        Create a new variant for a product.
+        """
+        try:
+            product = get_object_or_404(Product, slug=product_slug)
+            data = request.data.copy()
+            data['product'] = product.id
+            
+            serializer = ProductVariantSerializer(
+                data=data,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error creating variant: {str(e)}")
+            return Response(
+                {"error": "An error occurred while creating the variant"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
