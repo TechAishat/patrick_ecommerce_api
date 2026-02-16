@@ -282,12 +282,13 @@ def add_to_cart(request):
 
         # Get request data
         product_id = request.data.get('product_id')
+        variant_id = request.data.get('variant_id')  # New: Accept variant_id directly
         quantity = int(request.data.get('quantity', 1))
         color = request.data.get('color')
         size = request.data.get('size')
         
         # Debug: Log the incoming request data
-        logger.info(f"Add to cart request - Product ID: {product_id}, Quantity: {quantity}, Color: {color}, Size: {size}")
+        logger.info(f"Add to cart request - Product ID: {product_id}, Variant ID: {variant_id}, Quantity: {quantity}, Color: {color}, Size: {size}")
 
         # Get or create cart using cart_code
         cart, created = Cart.objects.get_or_create(
@@ -295,9 +296,9 @@ def add_to_cart(request):
             defaults={'cart_code': cart_code}
         )
         
-        # Get the product with categories prefetched
+        # Get the product
         try:
-            product = Product.objects.prefetch_related('category').get(
+            product = Product.objects.get(
                 id=product_id,
                 status='published'
             )
@@ -311,7 +312,19 @@ def add_to_cart(request):
         
         # Find the variant
         variant = None
-        if color or size:
+        if variant_id:
+            # If variant_id is provided, use it directly
+            try:
+                variant = ProductVariant.objects.get(id=variant_id, product=product)
+                logger.info(f"Variant found by ID: {variant.id}")
+            except ProductVariant.DoesNotExist:
+                logger.error(f"Variant with ID {variant_id} not found for product {product_id}")
+                return Response(
+                    {"success": False, "message": "Variant not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif color or size:
+            # Otherwise, try to find by color/size
             variant_query = ProductVariant.objects.filter(product=product)
             if color:
                 variant_query = variant_query.filter(color=color)
@@ -325,7 +338,14 @@ def add_to_cart(request):
                     {"success": False, "message": "Variant not found."},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            logger.info(f"Variant found: {variant.id}")
+            logger.info(f"Variant found by color/size: {variant.id}")
+
+        # Check stock if variant exists
+        if variant and variant.quantity < quantity:
+            return Response(
+                {"success": False, "message": f"Only {variant.quantity} items available in stock."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Create or update cart item
         cart_item, created = CartItem.objects.get_or_create(
@@ -340,58 +360,15 @@ def add_to_cart(request):
             cart_item.save()
             logger.info(f"Updated cart item quantity to {cart_item.quantity}")
 
-        # Debug: Log cart items after update
-        cart_items = CartItem.objects.filter(cart=cart).select_related('product', 'variant').prefetch_related('product__category')
-        logger.info(f"Cart items after update: {cart_items.count()} items")
-        for item in cart_items:
-            logger.info(f"Cart item: {item.product.name}, Qty: {item.quantity}, Variant: {item.variant}")
-
+        # Get updated cart items
+        cart_items = CartItem.objects.filter(cart=cart).select_related('product', 'variant')
+        
         # Prepare response
-        items = []
-        total_quantity = 0
-        
-        for item in cart_items:
-            variant_color = item.variant.color if item.variant else None
-            variant_size = item.variant.size if item.variant else None
-            
-            # Get category and subcategory
-            category_name = None
-            subcategory_name = ""
-            
-            if hasattr(item.product, 'category') and item.product.category.exists():
-                categories = item.product.category.all().order_by('name')
-                if categories:
-                    main_category = categories[0]
-                    category_name = main_category.name
-                    if len(categories) > 1:
-                        subcategory_name = categories[1].name
-                    elif hasattr(main_category, 'parent') and main_category.parent:
-                        category_name = main_category.parent.name
-                        subcategory_name = main_category.name
-            
-            items.append({
-                "product_name": item.product.name,
-                "category": category_name,
-                "subcategory": subcategory_name,
-                "quantity": item.quantity,
-                "price": str(item.product.price),
-                "total": float(item.product.price * item.quantity),
-                "color": variant_color,
-                "size": variant_size
-            })
-            total_quantity += item.quantity
-
-        cart_data = {
-            "id": cart.id,
-            "item_count": cart_items.count(),
-            "total_quantity": total_quantity,
-            "items": items
-        }
-        
+        serializer = CartSerializer(cart, context={'request': request})
         return Response({
             "success": True,
             "message": "Item added to cart successfully",
-            "cart": cart_data
+            "cart": serializer.data
         }, status=status.HTTP_200_OK)
     
     except Exception as e:
@@ -400,7 +377,7 @@ def add_to_cart(request):
             {"success": False, "message": f"An error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
+        
 
 @api_view(['PUT'])
 def update_cartitem_quantity(request):

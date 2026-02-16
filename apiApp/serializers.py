@@ -307,25 +307,40 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         ] if request else []
 
 
+# In apiApp/serializers.py, update CartItemSerializer
 class CartItemSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
+    variant = serializers.SerializerMethodField()
     sub_total = serializers.SerializerMethodField()
     
     class Meta:
         model = CartItem 
-        fields = ["id", "product", "quantity", "sub_total"]
+        fields = ["id", "product", "variant", "quantity", "sub_total"]
     
     def get_product(self, obj):
-        # Return only essential product fields
         return {
             "id": obj.product.id,
             "name": obj.product.name,
             "price": str(obj.product.price),
-            "image": self.context['request'].build_absolute_uri(obj.product.images.first().image.url) if obj.product.images.exists() else None
+            "image": self.context['request'].build_absolute_uri(
+                obj.product.images.first().image.url
+            ) if obj.product.images.exists() else None
+        }
+    
+    def get_variant(self, obj):
+        if not obj.variant:
+            return None
+        return {
+            "id": obj.variant.id,
+            "color": obj.variant.color,
+            "size": obj.variant.size,
+            "price_override": str(obj.variant.price_override) if obj.variant.price_override else None
         }
     
     def get_sub_total(self, obj):
-        return float(obj.product.price) * obj.quantity
+        # Use variant price if available, otherwise use product price
+        price = float(obj.variant.price_override) if obj.variant and obj.variant.price_override else float(obj.product.price)
+        return price * obj.quantity
 
 
 class CartSerializer(serializers.ModelSerializer):
